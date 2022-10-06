@@ -108,7 +108,7 @@ currentEvent = False
 payment = False
 people = {DAD : Person('Todd', False, True)}
 Event = []
-annoucements = []
+announcements = []
 Welcome = "Welcome to my dad's birthday gift. Respond yes or no to be a part of this"
 
 @app.route('/', methods=['GET', 'POST'])
@@ -126,7 +126,7 @@ def send(msg,user):
     return twilio_api.messages.create(body=msg, from_=TWILIO_NUM, to=user)
 
 def decode(oMsg, user):
-    global currentEvent, payment, people, Event, annoucements
+    global currentEvent, payment, people, Event, announcements
     msg = oMsg.lower().strip()
     mode = people[user].mode
     if len(msg) < 1:
@@ -137,7 +137,7 @@ def decode(oMsg, user):
             people[user].going = True
             people[user].starting = False
             announced = ""
-            if len(annoucements) > 0:
+            if len(announcements) > 0:
                 announceHistory(user)
                 announced = "Those are all the announcements you missed. "
             if len(Event) > 0:
@@ -407,9 +407,10 @@ def addNum(user):
     return msg
 
 def broadcast(msg, user):
+    global announcements, people
     mode = people[user].mode
     if 'a' in mode:
-        annoucements.append(msg)
+        announcements.append(msg)
     pole = False
     if 'p' in mode:
         pole = True
@@ -422,7 +423,7 @@ def broadcast(msg, user):
             send(msg,key)
 
 def announceHistory(user):
-    for msg in annoucements:
+    for msg in announcements:
         send(msg, user)
 
 def help(user):
@@ -508,12 +509,12 @@ def startOver(user):
     people[user].answers = []
 
 def restart():
-    global currentEvent, payment, people, Event, annoucements
+    global currentEvent, payment, people, Event, announcements
     currentEvent = False
     payment = False
     people = {DAD : Person('Todd', False, True)}
     Event = []
-    annoucements = []
+    announcements = []
 
 if __name__ == '__main__':
     app.run(debug=True)
