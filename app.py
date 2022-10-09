@@ -32,12 +32,14 @@ class Contacts(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(40), unique=True, nullable=False)
     number = db.Column(db.String(15), unique=True, nullable=False)
-class Course(db.Model):
+class Courses(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(40))
     slopes = db.Column(db.String(40))
+    ratings = db.Column(db.String(40))
     tees = db.Column(db.String(80))
-    handicap = db.Column(db.String(350))
+    handicaps = db.Column(db.String(350))
+    pars = db.Column(db.String(35))
 
 class Person:
     def __init__(self,name,starting=True,dad=False):
@@ -102,18 +104,23 @@ class Pole:
             msg += '\n' + str(i+1) + ". " + self.options[i]
         self.text = msg
 class Game:
-    def __init__(self,name,tees,slopes,players, holeHandicap):
+    def __init__(self, name, pars, tees, slopes, rating, handicaps):
         self.name = name
-        self.players = players
-        self.holeHandicap = holeHandicap.split(';')
-        tees = tees.split(',')
-        slopes = slopes.split(',')
-        self.rating = {}
-        for i in range(len(slopes)):
-            self.rating[tees[i]] = slopes[i]
+        self.pars = [int(i) for i in pars.split(',')]
+        self.tees = tees.split(',')
+        self.slopes = [int(i) for i in slopes.split(',')]
+        self.rating = [float(i) for i in rating.split(',')]
+        self.handicaps = handicaps.split(';')
+        for _ in range(len(self.handicaps)):
+            self.handicaps.append((self.handicaps.pop(0)).split(','))
         self.scores = {}
         self.teams = []
 
+    def selectHandicaps(self, tees):
+        i = currentGame.tees.index(tees)
+        while self.handicaps(i)[0] == 0:
+            i += 1
+        return i
     def setTeams(self,msg):
         global people
         self.teams = []
@@ -135,27 +142,35 @@ class Game:
                 group += 1
                 if group == 4:
                     group = 0
-                    self.teams.append(','.join(team))
+                    self.teams.append(team)
                     team = []
             return True
         try:
             self.teams = msg.split(';')
+            for _ in range(len(self.teams)):
+                self.teams.append((self.teams.pop(0)).split(','))
             for team in self.teams:
-                if len(team.split(',')) < 2 or len(team.split(',')) > 4:
+                if len(team) < 2 or len(team) > 4:
+                    self.teams = []
                     return False
             return True
         except:
+            self.teams = []
             return False
 
     def pinkball(self):
-        return "pinkball"
+        # if self.teams:
+        #     for team in self.teams:
 
+        return "pinkball"
     def bestball(self):
+        # if self.teams:
+        #     for team in self.teams:
+
         return "bestball"
 
     def skins(self):
         return "skins"
-
     def standings(self):
         msg = self.pinkball()
         msg += self.bestball()
@@ -210,45 +225,64 @@ DAD = os.getenv("ADMIN_NUM")
 ADMIN = os.getenv("ADMIN_NUM")
 FAIL = 'Unrecognized response. Type "?" to see command options'
 currentEvent = False
+safteyPlug = False
 payment = False
-people = {DAD:Person('Todd', False, True)}
+people = {DAD:Person('todd', False, True)}
 Event = []
 announcements = []
 currentPole = None
 currentGame = None
 Welcome = "Welcome to my dad's birthday gift. Respond yes or no to be a part of this"
 
-def dataEntered(handicap,holes,name):
-
+def dataEntered(handicap,holes,tees,name):
+    global currentGame, safteyPlug
+    differential = sum([int(i) for i in holes]) - courseHandicap(handicap,tees) - sum(currentGame.pars)
+    if -20 < differential < 30  or safteyPlug:
+        net = []
+        i = currentGame.selectHandicaps(tees)
+        additive = handicap // 18
+        extra = handicap % 18
+        for hole in range(18):
+            netScore = holes[hole] - additive - (extra >= currentGame.handicap[i][hole])
+            if currentGame.holes[hole] + 2 > netScore:
+                netScore = currentGame.holes[hole] + 2
+            net.append(netScore)
+        currentGame.scores[name] = net
+        return True
     return False
-
-def gameover():
-    global currentGame
-
 
 def courseHandicap(handicap,tees):
     global currentGame
-    return round((handicap * currentGame.rating[tees])/113)
+    i = currentGame.tees.index(tees)
+    plus = False
+    if handicap < 0:
+        plus = True
+        handicap = -handicap
+    val = round((handicap * currentGame.slopes[i])/113 + currentGame.rating[i] - sum(currentGame.pars))
+    return -val if plus else val
 
 @app.route('/', methods=['GET', 'POST'])
 def score():
+    global currentGame
     if currentGame is None:
         return "Sorry. It seems there is no game active :("
     if request.method == 'POST':
-        name = request.form['name']
+        name = request.form['name'].lower().strip()
+        handicap = float(request.form['handicap'])
+        tee = request.form['tee']
+        holes = []
         if getNumber(name)[0]:
-            handicap = request.form['handicap']
-            tee = request.form['tee']
-            holes = []
-            if dataEntered(handicap,holes,name):
+            if dataEntered(handicap,holes,tee,name):
                 msg = "Success :). Thanks " + name + ". Your total today was "
                 msg += str(sum(currentGame.scores[name])) + " and Net: "
                 msg += str(sum(currentGame.scores[name])-courseHandicap(handicap,tee))
-                if gameover():
+                if len(currentGame.scores) == peopleGoing():
                     broadcast(currentGame.standings)
-                return
+                    currentGame = None
+                return msg
+            return "That score is not realistic for the entered handicap. Round not entered. If the score is legit ask admin for help before retrying"
         return render_template("scores.html", tees=currentGame.tees, holes=holes, handicap=handicap)
-    return render_template("scores.html")
+    return render_template("scores.html", tees=currentGame.tees,holes=None,handicap=None)
 
 @app.route('/text', methods=['GET', 'POST'])
 def text():
@@ -331,9 +365,9 @@ def broadcast(msg, user):
     return msg
 def checkCourse(msg):
     global currentGame
-    course = Course.query.filter_by(number=msg).first()
+    course = Courses.query.filter_by(name=msg).first()
     if course:
-        currentGame = Game(course.name,course.tees,course.slope,peopleGoing())
+        currentGame = Game(course.name, course.pars, course.tees, course.slopes, course.ratings, course.handicaps)
         return True
     return False
 def checkPerson(msg, user):
@@ -378,7 +412,7 @@ def clean(user):
         people[user].mode = 'h'
     people[user].buffer = ""
 def decode(oMsg, user):
-    global currentEvent, payment, people, Event, announcements, currentPole
+    global currentEvent, payment, people, Event, announcements, currentPole, currentGame, safteyPlug
     msg = oMsg.lower().strip()
     mode = people[user].mode
     if len(msg) < 1:
@@ -473,7 +507,7 @@ def decode(oMsg, user):
             except:
                 return FAIL
         elif msg == "end":
-            people[user].mode = 'e'
+            people[user].mode = 'e1'
             return "Are you sure you want to" + (" end " if user == DAD else " leave ") + "this event??"
         elif "message" in msg or "msg" in msg:
             people[user].mode = 'm1'
@@ -506,6 +540,9 @@ def decode(oMsg, user):
                 elif msg == "pole":
                     currentPole = Pole()
                     return pole(user, 0)
+                elif msg == "pullsafteyplug":
+                    safteyPlug = not safteyPlug
+                    return "un" if safteyPlug else "" + "plugged"
                 elif "teams" in msg and currentGame:
                     try:
                         teams = msg.split(' ',1)[1].split(';')
@@ -514,6 +551,7 @@ def decode(oMsg, user):
                                 if not getNumber(t)[0]:
                                     return t + " is not found"
                         if currentGame.setTeams(msg):
+                            currentGame.broadcast()
                             return "Teams set"
                         return "Team match up unsuccessful"
                     except:
