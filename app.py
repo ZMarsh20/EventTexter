@@ -48,6 +48,7 @@ class Person:
             self.mode = "s"
         self.buffer = ""
         self.option = 0
+        self.lastScore = 0
         self.paid = False
         self.limitOutput = False
         self.name = name
@@ -112,13 +113,42 @@ class Game:
         self.rating = [float(i) for i in rating.split(',')]
         self.handicaps = handicaps.split(';')
         for _ in range(len(self.handicaps)):
-            self.handicaps.append((self.handicaps.pop(0)).split(','))
+            self.handicaps.append([int(x) for x in (self.handicaps.pop(0)).split(',')])
         self.scores = {}
         self.teams = []
-
+    def broadcast(self):
+        msg = "Here are the teams: \n"
+        for team in self.teams:
+            msg += ','.join([x.title() for x in team]) + '\n'
+        broadcast(None, msg)
+    def bestball(self):
+        msg = "Best Ball:\n"
+        if self.teams:
+            for team in self.teams:
+                bestball = []
+                for i in range(18):
+                    bestball.append(min([x[i] for x in team]))
+            msg += ','.join([x.title() for x in team]) + ': ' + str(sum(bestball)) + '\n'
+        bestball = []
+        for i in range(18):
+            bestball.append(min([x[i] for x in self.scores.values()]))
+        msg += "Everyone: " + str(sum(bestball)) + '\n\n'
+        return msg
+    def pinkball(self):
+        msg = ""
+        if self.teams:
+            msg += "Pink Ball:\n"
+            for team in self.teams:
+                pinkball = []
+                for i in range(18):
+                    score = self.scores[team[(i%len(team))]][i]
+                    pinkball.append(score)
+                msg += ','.join([x.title() for x in team]) + ': ' + str(sum(pinkball)) + '\n'
+            msg += '\n'
+        return msg
     def selectHandicaps(self, tees):
         i = currentGame.tees.index(tees)
-        while self.handicaps(i)[0] == 0:
+        while self.handicaps[i][0] == 0:
             i += 1
         return i
     def setTeams(self,msg):
@@ -157,22 +187,55 @@ class Game:
         except:
             self.teams = []
             return False
-
-    def pinkball(self):
-        # if self.teams:
-        #     for team in self.teams:
-
-        return "pinkball"
-    def bestball(self):
-        # if self.teams:
-        #     for team in self.teams:
-
-        return "bestball"
-
     def skins(self):
-        return "skins"
+        def format(v):
+            val = v.split(',')
+            if len(val) == 1:
+                return v
+            ret = ''
+            dash = 0
+            prev = val[0]
+            for i in range(1,len(val)):
+                if int(prev) == int(val[i])-1:
+                    dash += 1
+                    if dash == 2:
+                        ret = ret[:-1] + '-'
+                else:
+                    dash = 0
+                if dash < 2:
+                    ret += prev + ','
+                prev = val[i]
+            return ret + val[i]
+        msg = 'Skins:'
+        skinCount = {}
+        for i in range(18):
+            name = ""
+            val = 10
+            cancel = False
+            for k,v in self.scores.items():
+                if v[i] < val:
+                    name = k
+                    val = v[i]
+                    cancel = False
+                elif v[i] == val:
+                    cancel = True
+            if not cancel:
+                if name in skinCount:
+                    skinCount[name] += ',' + str(i+1)
+                else:
+                    skinCount[name] = str(i+1)
+        if skinCount is None:
+            return 'No skins'
+        for k,v in skinCount.items():
+            msg += '\n' + k.title() + ': ' + format(v)
+        return msg
     def standings(self):
-        msg = self.pinkball()
+        global people
+        msg = "Scores:\n"
+        for k,v in self.scores.items():
+            val = int(sum(v))
+            msg += k.title() + ": " + str(people[getNumber(k)[1]].lastScore) + ' for ' + str(val) + '\n'
+        msg += self.pinkball()
         msg += self.bestball()
         msg += self.skins()
         return msg
@@ -225,32 +288,68 @@ DAD = os.getenv("ADMIN_NUM")
 ADMIN = os.getenv("ADMIN_NUM")
 FAIL = 'Unrecognized response. Type "?" to see command options'
 currentEvent = False
-safteyPlug = False
+safetyPlug = False
 payment = False
 people = {DAD:Person('todd', False, True)}
 Event = []
 announcements = []
 currentPole = None
 currentGame = None
-Welcome = "Welcome to my dad's birthday gift. Respond yes or no to be a part of this"
+Welcome = "Hi there! I am Todd's birthday gift created by his incredibly gifted son. I am a chat bot here to " \
+          "invite you to his latest shenanigans and keep things organized for him. Say yes to join :)"
 
+@app.route('/', methods=['GET', 'POST'])
+def score():
+    global currentGame
+    if currentGame is None:
+        return "Sorry. It seems there is no game active :("
+    if request.method == 'POST':
+        name = request.form['name'].lower().strip()
+        handicap = float(request.form['handicap'])
+        tee = request.form['tees']
+        holes = []
+        for i in range(18):
+            holes.append(int(request.form[('hole' + str(i))]))
+        if getNumber(name)[0]:
+            if dataEntered(handicap,holes,tee,name):
+                msg = "Success :). Thanks " + name.title() + ". Your total today was "
+                msg += str(people[getNumber(name)[1]].lastScore) + " and Net " + str(int(sum(currentGame.scores[name])))
+                if len(currentGame.scores) == peopleGoing():
+                    broadcast(None, currentGame.standings())
+                    currentGame = None
+                return msg
+            msg = "That score is not realistic for the entered handicap. Round not entered. "
+            msg += "If the score is accurate, ask admin to override before retrying"
+            return msg
+        return render_template("scores.html", courseName=currentGame.name.title(),
+                                            tees=currentGame.tees,
+                                            holes=holes,
+                                            handicap=handicap,
+                                            pars=currentGame.pars,
+                                            nameFail=True)
+    return render_template("scores.html", courseName=currentGame.name.title(),
+                                        tees=currentGame.tees,
+                                        holes=None,
+                                        handicap=None,
+                                        pars=currentGame.pars,
+                                        nameFail=False)
 def dataEntered(handicap,holes,tees,name):
-    global currentGame, safteyPlug
-    differential = sum([int(i) for i in holes]) - courseHandicap(handicap,tees) - sum(currentGame.pars)
-    if -20 < differential < 30  or safteyPlug:
-        net = []
-        i = currentGame.selectHandicaps(tees)
-        additive = handicap // 18
-        extra = handicap % 18
-        for hole in range(18):
-            netScore = holes[hole] - additive - (extra >= currentGame.handicap[i][hole])
-            if currentGame.holes[hole] + 2 > netScore:
-                netScore = currentGame.holes[hole] + 2
-            net.append(netScore)
-        currentGame.scores[name] = net
+    global currentGame, safetyPlug
+    net = []
+    i = currentGame.selectHandicaps(tees)
+    additive = handicap // 18
+    extra = handicap % 18
+    for hole in range(18):
+        netScore = holes[hole] - additive - (extra >= currentGame.handicaps[i][hole])
+        if currentGame.pars[hole] + 2 < netScore:
+            netScore = currentGame.pars[hole] + 2
+        net.append(netScore)
+    currentGame.scores[name] = net
+    differential = sum(net) - courseHandicap(handicap,tees) - sum(currentGame.pars)
+    if -10 < differential or safetyPlug:
+        people[getNumber(name)[1]].lastScore = int(sum(net)) + courseHandicap(handicap,tees)
         return True
     return False
-
 def courseHandicap(handicap,tees):
     global currentGame
     i = currentGame.tees.index(tees)
@@ -261,29 +360,6 @@ def courseHandicap(handicap,tees):
     val = round((handicap * currentGame.slopes[i])/113 + currentGame.rating[i] - sum(currentGame.pars))
     return -val if plus else val
 
-@app.route('/', methods=['GET', 'POST'])
-def score():
-    global currentGame
-    if currentGame is None:
-        return "Sorry. It seems there is no game active :("
-    if request.method == 'POST':
-        name = request.form['name'].lower().strip()
-        handicap = float(request.form['handicap'])
-        tee = request.form['tee']
-        holes = []
-        if getNumber(name)[0]:
-            if dataEntered(handicap,holes,tee,name):
-                msg = "Success :). Thanks " + name + ". Your total today was "
-                msg += str(sum(currentGame.scores[name])) + " and Net: "
-                msg += str(sum(currentGame.scores[name])-courseHandicap(handicap,tee))
-                if len(currentGame.scores) == peopleGoing():
-                    broadcast(currentGame.standings)
-                    currentGame = None
-                return msg
-            return "That score is not realistic for the entered handicap. Round not entered. If the score is legit ask admin for help before retrying"
-        return render_template("scores.html", tees=currentGame.tees, holes=holes, handicap=handicap)
-    return render_template("scores.html", tees=currentGame.tees,holes=None,handicap=None)
-
 @app.route('/text', methods=['GET', 'POST'])
 def text():
     if request.method != 'POST':
@@ -293,12 +369,12 @@ def text():
     resp = MessagingResponse()
     msg = resp.message()
     if incoming_number in people or incoming_number == ADMIN:
-        msg.body(decode(incoming_msg, incoming_number))
+        msg.body(decode(incoming_number, incoming_msg))
     return str(resp)
 def addNum(user):
     msg = "Got it"
     if user != DAD:
-        send("Please add " + people[user].buffer.title() + " - " + people[user].name.title(), DAD)
+        send(DAD, "Please add " + people[user].buffer.title() + " - " + people[user].name.title())
         msg += ". Once Todd approves them, they will be added to the event"
     else:
         name = people[user].buffer.split(',')[0].lower()
@@ -309,7 +385,7 @@ def addNum(user):
                 db.session.add(contact)
                 db.session.commit()
             people[number] = Person(name)
-            send(Welcome, number)
+            send(number, Welcome)
         else:
             return "They are already signed up for the event"
     clean(user)
@@ -317,7 +393,7 @@ def addNum(user):
 def addQuestion():
     people[DAD].mode = 'q1'
     return "Type now your yes or no question"
-def addStepOne(msg, user):
+def addStepOne(user, msg):
     if len(msg) > 40:
         return "Name is to long please retype it. Try again"
     if ',' in msg:
@@ -341,19 +417,20 @@ def announce(user):
 def announceHistory(user):
     global announcements
     for msg in announcements:
-        send(msg, user)
+        send(user, msg)
     if len(announcements) > 0:
         return "You should get the announcement's you've missed"
     return ""
-def broadcast(msg, user):
+def broadcast(user, msg):
     global announcements, people
-    mode = people[user].mode
-    if 'A' in mode:
-        announcements.append(msg)
     pole = False
-    if 'p' in mode:
-        pole = True
-        ending = currentPole.endPole(peopleGoing())
+    if user:
+        mode = people[user].mode
+        if 'A' in mode:
+            announcements.append(msg)
+        if 'p' in mode:
+            pole = True
+            ending = currentPole.endPole(peopleGoing())
     for k,v in people.items():
         if k != user and v.going and v.mode != 'r':
             if pole:
@@ -361,7 +438,7 @@ def broadcast(msg, user):
                     people[k].mode = 'h'
                 else:
                     people[k].mode = 'p'
-            send(msg,k)
+            send(k, msg)
     return msg
 def checkCourse(msg):
     global currentGame
@@ -370,7 +447,7 @@ def checkCourse(msg):
         currentGame = Game(course.name, course.pars, course.tees, course.slopes, course.ratings, course.handicaps)
         return True
     return False
-def checkPerson(msg, user):
+def checkPerson(user, msg):
     mode = people[user].mode
     for k,v in people.items():
         if msg in v.name:
@@ -404,15 +481,15 @@ def clean(user):
             Event[-1].setText()
         else:
             Event.pop(-1)
-            send("Removed", DAD)
+            send(DAD, "Removed")
     elif 's' in mode:
         people[DAD].mode = 'h'
         return "Event set. Now you can add everyone to the event"
     elif people[user].going:
         people[user].mode = 'h'
     people[user].buffer = ""
-def decode(oMsg, user):
-    global currentEvent, payment, people, Event, announcements, currentPole, currentGame, safteyPlug
+def decode(user, oMsg):
+    global currentEvent, payment, people, Event, announcements, currentPole, currentGame, safetyPlug
     msg = oMsg.lower().strip()
     mode = people[user].mode
     if len(msg) < 1:
@@ -450,7 +527,7 @@ def decode(oMsg, user):
         return "Typing back again will finalize the event. Make sure you're ready"
     if 'a' in mode:
         if '1' in mode:
-            return addStepOne(msg, user)
+            return addStepOne(user, msg)
         if 'y' == msg[0] or '2' in mode:
             if '2' in mode:
                 num = ''.join(list(filter(lambda x: x.isdigit(), msg)))
@@ -470,7 +547,7 @@ def decode(oMsg, user):
             people[user].mode = 'A2'
             return "Announce this? " + oMsg
         if 'y' == msg[0]:
-            broadcast(people[user].buffer, user)
+            broadcast(user, people[user].buffer)
             clean(user)
             return "Messages Sent"
         elif 'n' == msg[0]:
@@ -491,11 +568,7 @@ def decode(oMsg, user):
         clean(user)
         return 'Ok'
     elif 'g' in mode:
-        clean(user)
-        if checkCourse(msg):
-            msg = "Game started. Enter game information at http://zmarshall.pythonanywhere.com/. Good luck!"
-            return broadcast(msg, user)
-        return "Course not found"
+        return startGame(user, msg)
     elif 'h' in mode:
         if "add" in msg:
             if msg == "add":
@@ -503,7 +576,7 @@ def decode(oMsg, user):
                 return "Who would you like to add?"
             try:
                 name = msg.split(' ',1)[1]
-                return addStepOne(name, user)
+                return addStepOne(user, name)
             except:
                 return FAIL
         elif msg == "end":
@@ -534,33 +607,40 @@ def decode(oMsg, user):
             if currentEvent:
                 if msg == "announce":
                     return announce(user)
-                elif msg == "play":
-                    people[user].mode = 'g'
-                    return "What course?"
+                elif "play" in msg:
+                    if msg == 'play':
+                        people[user].mode = 'g'
+                        return "What course?"
+                    try:
+                        msg = msg.split(' ',1)[1]
+                        return startGame(user, msg)
+                    except:
+                        return FAIL
                 elif msg == "pole":
                     currentPole = Pole()
                     return pole(user, 0)
-                elif msg == "pullsafteyplug":
-                    safteyPlug = not safteyPlug
-                    return "un" if safteyPlug else "" + "plugged"
+                elif msg == "pullsafetyplug":
+                    safetyPlug = not safetyPlug
+                    return "un" if safetyPlug else "" + "plugged"
                 elif "teams" in msg and currentGame:
                     try:
                         teams = msg.split(' ',1)[1].split(';')
-                        for team in teams:
-                            for t in team.split(','):
-                                if not getNumber(t)[0]:
-                                    return t + " is not found"
-                        if currentGame.setTeams(msg):
+                        if teams[0] != 'random':
+                            for team in teams:
+                                for t in team.split(','):
+                                    if not getNumber(t)[0]:
+                                        return t + " is not found"
+                        if currentGame.setTeams(msg.split(' ',1)[1]):
                             currentGame.broadcast()
                             return "Teams set"
-                        return "Team match up unsuccessful"
+                        return "Team setup unsuccessful"
                     except:
                         return FAIL
 
     elif 'm' in mode:
         if '1' in mode:
             return checkPerson(msg, user)
-        send((people[user].name.title() + " says:\n" + msg), people[user].buffer)
+        send(people[user].buffer, (people[user].name.title() + " says:\n" + msg))
         clean(user)
         return "Message sent"
     elif 'p' in mode:
@@ -568,7 +648,7 @@ def decode(oMsg, user):
             if msg == 'end':
                 people[user].mode = 'pi2'
                 clean(user)
-                return "Pole is now running. Cast your vote too\n" + broadcast(currentPole.text, user)
+                return "Pole is now running. Cast your vote too\n" + broadcast(user, currentPole.text)
             i = people[user].option
             currentPole.options.append(people[user].buffer)
             currentPole.tally.append(0)
@@ -576,7 +656,7 @@ def decode(oMsg, user):
         if currentPole.addTally(msg):
             msg = "Your vote has been cast"
             if currentPole.endPole(peopleGoing()):
-                msg = broadcast(currentPole.winner, user)
+                msg = broadcast(user, currentPole.winner)
                 currentPole = None
             return msg
         return 'Not valid. "?" for help'
@@ -719,7 +799,7 @@ def pay(user):
     if user == DAD:
         people[DAD].mode = 'P'
         return "Who would you like to check off as paid?"
-    send(people[user].name.title() + ' says they have paid. Type "pay" to check someone off for paying', DAD)
+    send(DAD, people[user].name.title() + ' says they have paid. Type "pay" to check someone off for paying')
     return "Request sent. Send Todd a screenshot or image of your payment just in case he's drunk :)"
 def peopleGoing():
     global people
@@ -749,8 +829,14 @@ def save():
     with open("savefile.txt", 'w') as f:
         f.write(jsonpickle.encode(data))
     return "Saved"
-def send(msg,user):
+def send(user, msg):
     return twilio_api.messages.create(body=msg, from_=TWILIO_NUM, to=user)
+def startGame(user, msg):
+    clean(user)
+    if checkCourse(msg):
+        msg = "Game started. Enter game information at http://zmarshall.pythonanywhere.com/. Good luck!"
+        return broadcast(user, msg)
+    return "Course not found"
 def startOver(user):
     global people, Event
     answers = people[user].answers
@@ -802,7 +888,7 @@ def status(user, name):
     return msg
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run()
 
 # Legend
 # a = add person

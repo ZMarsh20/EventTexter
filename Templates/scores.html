@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Scores</title>
+</head>
+<body style="text-align: center">
+    <h1>{{courseName}}</h1>
+    <form id="scoreForm" action="/" method="POST">
+        <label for="name">Enter your name:</label><br>
+        <input type="text" id="name" name="name" required>
+        {% if nameFail %}
+            <br><label for="name" style="color: red">That name was not found in the group</label>
+        {%endif%}
+        <br><br>
+        <label for="handicap">Enter your handicap index:</label><br>
+        <input type="number" id="handicap" name="handicap" min="0" max="55" step="0.1" required value="{{ handicap }}"><br>
+
+        <br><label for="tees">Tees:</label>
+        <select id="tees" name="tees" required value="{{tee}}">
+            {% for tee in tees %}
+            <option value="{{tee}}">{{tee|title}}</option>
+            {%endfor%}
+        </select><br>
+
+        {% for i in range(18) %}
+            <br><span style="text-align: right; display: inline-block; width: 100px;"><label for="hole{{ i }}" style="tab-size: 4;">Hole {{i+1}}&#09;: </label></span>
+            <input type="number" id="hole{{ i }}" name="hole{{ i }}" min="1" max="10" step="1" required value="{{ holes[i] }}">
+            <span style="text-align: left; display: inline-block; width: 100px;"><label for="hole{{ i }}">Par {{ pars[i] }}</label></span>
+        {%endfor%}
+        <br><br><input type="submit">
+    </form>
+</body>
+</html>
