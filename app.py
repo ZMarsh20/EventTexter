@@ -290,6 +290,7 @@ FAIL = 'Unrecognized response. Type "?" to see command options'
 currentEvent = False
 safetyPlug = False
 payment = False
+loaded = False
 people = {DAD:Person('todd', False, True)}
 Events = []
 announcements = []
@@ -366,21 +367,27 @@ def courseHandicap(handicap,tees):
 
 @app.route('/text', methods=['GET', 'POST'])
 def text():
+    global loaded
     if request.method != 'POST':
         redirect(url_for('score'))
     incoming_msg = request.form['Body']
     incoming_number = request.form['From']
     resp = MessagingResponse()
     msg = resp.message()
+    if not loaded:
+        load('current')
+        loaded = True
     if incoming_number in people or incoming_number == ADMIN:
         msg.body(decode(incoming_number, incoming_msg))
     return str(resp)
 def addAll():
+    global people
     peeps = Contacts.query.all()
     msg = "Added:"
     for peep in peeps:
-        msg += '\n' + peep.name.title()
-        addNum(peep.number)
+        if peep.number not in people:
+            msg += '\n' + peep.name.title()
+            addNum(peep.number)
     return msg
 def addNum(user):
     msg = "Got it"
@@ -479,6 +486,7 @@ def checkPerson(user, msg):
 def clean(user):
     global currentPole
     mode = people[user].mode
+    save('current')
     if 'p' in mode:
         if 'i' in mode:
             if '2' in mode:
@@ -510,9 +518,9 @@ def decode(user, oMsg):
         return FAIL
     if user == ADMIN:
         if msg == 'save':
-            return save()
+            return save('savefile')
         elif msg == 'load':
-            return load()
+            return load('savefile')
     if people[user].starting:
         if 'y' == msg[0]:
             people[user].going = True
@@ -521,7 +529,7 @@ def decode(user, oMsg):
                 people[user].mode = 'r'
                 msg = Events[people[user].option].text
                 return "Now getting you ramped up...\n" + msg
-            people[user].mode = 'h'
+            clean(user)
             return 'Welcome. Type "?" to see your options' + announceHistory()
         elif not people[user].limitOutput:
             if 'n' == msg[0]:
@@ -637,6 +645,13 @@ def decode(user, oMsg):
                     except:
                         return FAIL
                 elif msg == "pole":
+                    people[user].mode = 'p'
+                    if currentPole:
+                        currentPole.findWinner()
+                        broadcast(None, currentPole.winner)
+                        currentPole = None
+                        clean(user)
+                        return ""
                     currentPole = Pole()
                     return pole(user, 0)
                 elif msg == "pullsafetyplug":
@@ -656,7 +671,6 @@ def decode(user, oMsg):
                         return "Team setup unsuccessful"
                     except:
                         return FAIL
-
     elif 'm' in mode:
         if '1' in mode:
             return checkPerson(msg, user)
@@ -713,7 +727,8 @@ def decode(user, oMsg):
                 Events[i].yes += 1
             elif 'n' == msg[0]:
                 Events[i].no += 1
-            return "Only expecting 'y' or 'n'"
+            else:
+                return "Only expecting 'y' or 'n'"
         people[user].answers.append(msg)
         people[user].option += 1
         if i+1 >= len(Events):
@@ -809,10 +824,10 @@ def help(user):
         msg += '"back" to end sign up and start adding people\n'
         msg += '"end" to restart'
     return msg
-def load():
+def load(s):
     global currentEvent, payment, people, Events, announcements
     try:
-        with open("savefile.txt", 'r') as f:
+        with open(s + ".txt", 'r') as f:
             data = jsonpickle.decode(f.readline())
         currentEvent = data[0]
         payment = data[1]
@@ -850,10 +865,10 @@ def restart():
     announcements = []
     currentPole = None
     currentGame = None
-def save():
+def save(s):
     global currentEvent, payment, people, Events, announcements
     data = [currentEvent, payment, people, Events, announcements]
-    with open("savefile.txt", 'w') as f:
+    with open(s + ".txt", 'w') as f:
         f.write(jsonpickle.encode(data))
     return "Saved"
 def send(user, msg):
@@ -892,10 +907,12 @@ def status(user, name):
             valid, number = getNumber(name)
             if valid:
                 person = people[number]
-                msg += name + ' is ' + '' if person.going else 'not ' + 'going\n'
+                msg += name + ' is ' + ('' if person.going else 'not ') + 'going\n'
+                if payment:
+                    msg += '\nHas ' + ('' if person.paid else 'not ') + 'paid'
                 questions = [x.getText() for x in Events]
                 for i in range(len(questions)):
-                    msg += '\n' + questions[i] + ': ' + person.answers[i]
+                    msg += '\n\n' + questions[i] + ': ' + person.answers[i]
                 return msg
             return "Name not found"
 
