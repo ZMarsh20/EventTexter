@@ -372,14 +372,18 @@ def text():
         redirect(url_for('score'))
     incoming_msg = request.form['Body']
     incoming_number = request.form['From']
-    resp = MessagingResponse()
-    msg = resp.message()
     if not loaded:
         load('current')
         loaded = True
     if incoming_number in people or incoming_number == ADMIN:
-        msg.body(decode(incoming_number, incoming_msg))
-    return str(resp)
+        try:
+            resp = MessagingResponse()
+            msg = resp.message()
+            msg.body(decode(incoming_number, incoming_msg))
+            return str(resp)
+        except:
+            pass
+    return ':3'
 def addAll():
     global people
     peeps = Contacts.query.all()
@@ -649,7 +653,7 @@ def decode(user, oMsg):
                     people[user].mode = 'p'
                     if currentPole:
                         currentPole.findWinner()
-                        broadcast(None, currentPole.winner)
+                        broadcast(user, currentPole.winner)
                         currentPole = None
                         clean(user)
                         return ""
@@ -679,13 +683,16 @@ def decode(user, oMsg):
         clean(user)
         return "Message sent"
     elif 'p' in mode:
+        if currentPole is None:
+            people[user].mode = 'h'
+            return decode(user, oMsg)
         if 'i' in mode:
             if msg == 'end':
                 people[user].mode = 'pi2'
                 clean(user)
                 return "Pole is now running. Cast your vote too\n" + broadcast(user, currentPole.text)
             i = people[user].option
-            currentPole.options.append(people[user].buffer)
+            currentPole.options.append(oMsg)
             currentPole.tally.append(0)
             return pole(user, i + 1)
         if currentPole.addTally(msg):
@@ -693,6 +700,7 @@ def decode(user, oMsg):
             if currentPole.endPole(peopleGoing()):
                 msg = broadcast(user, currentPole.winner)
                 currentPole = None
+            people[user].mode = 'h'
             return msg
         return 'Not valid. "?" for help'
     elif 'P' in mode:
@@ -873,7 +881,10 @@ def save(s):
         f.write(jsonpickle.encode(data))
     return "Saved"
 def send(user, msg):
-    return twilio_api.messages.create(body=msg, from_=TWILIO_NUM, to=user)
+    try:
+        return twilio_api.messages.create(body=msg, from_=TWILIO_NUM, to=user)
+    except:
+        return False
 def showQuestions():
     global Events
     msg = ""
