@@ -486,7 +486,6 @@ def checkPerson(user, msg):
 def clean(user):
     global currentPole
     mode = people[user].mode
-    save('current')
     if 'p' in mode:
         if 'i' in mode:
             if '2' in mode:
@@ -506,10 +505,12 @@ def clean(user):
             send(DAD, "Removed")
     elif 's' in mode:
         people[DAD].mode = 'h'
+        save('current')
         return "Event set. Now you can add everyone to the event"
     elif people[user].going:
         people[user].mode = 'h'
     people[user].buffer = ""
+    save('current')
 def decode(user, oMsg):
     global currentEvent, payment, people, Events, announcements, currentPole, currentGame, safetyPlug
     msg = oMsg.lower().strip()
@@ -673,7 +674,7 @@ def decode(user, oMsg):
                         return FAIL
     elif 'm' in mode:
         if '1' in mode:
-            return checkPerson(msg, user)
+            return checkPerson(user, msg)
         send(people[user].buffer, (people[user].name.title() + " says:\n" + msg))
         clean(user)
         return "Message sent"
