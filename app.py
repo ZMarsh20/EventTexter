@@ -45,7 +45,7 @@ class Person:
     def __init__(self,name,starting=True,dad=False):
         self.mode = ""
         if dad:
-            self.mode = "s"
+            self.mode = "S"
         self.buffer = ""
         self.option = 0
         self.lastScore = 0
@@ -291,12 +291,16 @@ currentEvent = False
 safetyPlug = False
 payment = False
 people = {DAD:Person('todd', False, True)}
-Event = []
+Events = []
 announcements = []
 currentPole = None
 currentGame = None
 Welcome = "Hi there! I am Todd's birthday gift created by his incredibly gifted son. I am a chat bot here to " \
           "invite you to his latest shenanigans and keep things organized for him. Say yes to join :)"
+happyBday = "Happy birthday Dad! This number is your gift this year. I am a chat bot to help out with " \
+            "Mesquite and other events you want to plan. I can help coordinate who plans on going, " \
+            "what time people want to go as well as any other questions you may want to know to help you plan the event " \
+            "and the coolest part, automate scoring to know who won bestball, pinkball and skins!!!"
 
 @app.route('/', methods=['GET', 'POST'])
 def score():
@@ -371,6 +375,13 @@ def text():
     if incoming_number in people or incoming_number == ADMIN:
         msg.body(decode(incoming_number, incoming_msg))
     return str(resp)
+def addAll():
+    peeps = Contacts.query.all()
+    msg = "Added:"
+    for peep in peeps:
+        msg += '\n' + peep.name.title()
+        addNum(peep.number)
+    return msg
 def addNum(user):
     msg = "Got it"
     if user != DAD:
@@ -396,8 +407,11 @@ def addQuestion():
 def addStepOne(user, msg):
     if len(msg) > 40:
         return "Name is to long please retype it. Try again"
-    if ',' in msg:
+    elif ',' in msg:
         return "No commas allowed in name. Try again"
+    if user == DAD and msg == "all":
+        people(DAD).mode == 'a4'
+        return "Add everyone that's in the database?"
     people[user].buffer = msg
     if Contacts.query.filter_by(name=msg).first() is None:
         people[user].mode = 'a2'
@@ -478,9 +492,9 @@ def clean(user):
         people[DAD].mode = 's'
         people[DAD].option = 0
         if 'v2' in mode:
-            Event[-1].setText()
+            Events[-1].setText()
         else:
-            Event.pop(-1)
+            Events.pop(-1)
             send(DAD, "Removed")
     elif 's' in mode:
         people[DAD].mode = 'h'
@@ -489,7 +503,7 @@ def clean(user):
         people[user].mode = 'h'
     people[user].buffer = ""
 def decode(user, oMsg):
-    global currentEvent, payment, people, Event, announcements, currentPole, currentGame, safetyPlug
+    global currentEvent, payment, people, Events, announcements, currentPole, currentGame, safetyPlug
     msg = oMsg.lower().strip()
     mode = people[user].mode
     if len(msg) < 1:
@@ -503,9 +517,9 @@ def decode(user, oMsg):
         if 'y' == msg[0]:
             people[user].going = True
             people[user].starting = False
-            if len(Event) > 0:
+            if len(Events) > 0:
                 people[user].mode = 'r'
-                msg = Event[people[user].option].text
+                msg = Events[people[user].option].text
                 return "Now getting you ramped up...\n" + msg
             people[user].mode = 'h'
             return 'Welcome. Type "?" to see your options' + announceHistory()
@@ -528,6 +542,12 @@ def decode(user, oMsg):
     if 'a' in mode:
         if '1' in mode:
             return addStepOne(user, msg)
+        elif '4' in mode:
+            if 'y' == msg[0]:
+                return addAll()
+            elif 'n' == msg[0]:
+                clean(DAD)
+                return "Ok"
         if 'y' == msg[0] or '2' in mode:
             if '2' in mode:
                 num = ''.join(list(filter(lambda x: x.isdigit(), msg)))
@@ -674,7 +694,7 @@ def decode(user, oMsg):
             return "Are you sure that you want to ask: " + oMsg
         if 'y' == msg[0]:
             people[DAD].mode = 's'
-            Event[-1].text = people[DAD].buffer
+            Events[-1].text = people[DAD].buffer
             people[DAD].buffer = ''
             return "Question now in sign up"
         elif 'n' == msg[0]:
@@ -686,27 +706,27 @@ def decode(user, oMsg):
             people[user].starting = True
             return "Just reply 'y' if you change your mind"
         i = people[user].option
-        if isinstance(Event[i], Vote) and not Event[i].addTally(msg):
+        if isinstance(Events[i], Vote) and not Events[i].addTally(msg):
             return 'Answers should be comma separated numbers. "?" for examples'
-        elif isinstance(Event[i], Question) and ('y' == msg[0] or 'n' == msg[0]):
+        elif isinstance(Events[i], Question) and ('y' == msg[0] or 'n' == msg[0]):
             if 'y' == msg[0]:
-                Event[i].yes += 1
+                Events[i].yes += 1
             elif 'n' == msg[0]:
-                Event[i].no += 1
+                Events[i].no += 1
             return "Only expecting 'y' or 'n'"
         people[user].answers.append(msg)
         people[user].option += 1
-        if i+1 >= len(Event):
+        if i+1 >= len(Events):
             clean(user)
             return 'Thank you. Type "?" for your options\n' + announceHistory(user)
-        msg = Event[people[user].option].text
+        msg = Events[people[user].option].text
         return "Answer locked in. Next question:\n" + msg
     elif 's' in mode:
         if msg == "question":
-            Event.append(Question())
+            Events.append(Question())
             return addQuestion()
         elif msg == "vote":
-            Event.append(Vote())
+            Events.append(Vote())
             return addVote(0)
         elif msg == "pay":
             payment = not payment
@@ -717,13 +737,19 @@ def decode(user, oMsg):
         elif msg == "end":
             restart()
             return "Clean slate"
+        elif msg == 'status':
+            return showQuestions()
+    elif 'S' in mode:
+        people[DAD].mode = 's'
+        return happyBday
     elif 'v' in mode:
         if msg == 'end':
+            people[DAD].mode = 'v2'
             clean(DAD)
             return "Vote set for sign up"
         i = people[DAD].option
-        Event[-1].options.append(oMsg)
-        Event[-1].tally.append(0)
+        Events[-1].options.append(oMsg)
+        Events[-1].tally.append(0)
         return addVote(i+1)
     return FAIL
 def getNumber(name):
@@ -779,18 +805,19 @@ def help(user):
         msg += '"question" to add a yes or no question when signing up\n'
         msg += '"vote" to add a vote when signing up\n'
         msg += '"pay" change whether or not you are expecting payment\n'
+        msg += '"status" to see what questions have been added to the event\n'
         msg += '"back" to end sign up and start adding people\n'
         msg += '"end" to restart'
     return msg
 def load():
-    global currentEvent, payment, people, Event, announcements
+    global currentEvent, payment, people, Events, announcements
     try:
         with open("savefile.txt", 'r') as f:
             data = jsonpickle.decode(f.readline())
         currentEvent = data[0]
         payment = data[1]
         people = data[2]
-        Event = data[3]
+        Events = data[3]
         announcements = data[4]
         return "Loaded"
     except:
@@ -815,22 +842,28 @@ def pole(user, i):
         return "Type now option " + str(i)
     return "What should the pole be about?"
 def restart():
-    global currentEvent, payment, people, Event, announcements, currentPole, currentGame
+    global currentEvent, payment, people, Events, announcements, currentPole, currentGame
     currentEvent = False
     payment = False
     people = {DAD : Person('Todd', False, True)}
-    Event = []
+    Events = []
     announcements = []
     currentPole = None
     currentGame = None
 def save():
-    global currentEvent, payment, people, Event, announcements
-    data = [currentEvent, payment, people, Event, announcements]
+    global currentEvent, payment, people, Events, announcements
+    data = [currentEvent, payment, people, Events, announcements]
     with open("savefile.txt", 'w') as f:
         f.write(jsonpickle.encode(data))
     return "Saved"
 def send(user, msg):
     return twilio_api.messages.create(body=msg, from_=TWILIO_NUM, to=user)
+def showQuestions():
+    global Events
+    msg = ""
+    for event in Events:
+        msg += event.getText() + '/n'
+    return msg
 def startGame(user, msg):
     clean(user)
     if checkCourse(msg):
@@ -838,21 +871,21 @@ def startGame(user, msg):
         return broadcast(user, msg)
     return "Course not found"
 def startOver(user):
-    global people, Event
+    global people, Events
     answers = people[user].answers
     for i in range(len(answers)):
         if 'y' in answers[i]:
-            Event[i].yes -= 1
+            Events[i].yes -= 1
         elif 'n' in answers[i]:
-            Event[i].no -= 1
+            Events[i].no -= 1
         else:
-            Event[i].addTally(answers[i],True)
+            Events[i].addTally(answers[i], True)
 
     people[user].option = 0
     people[user].answers = []
-    return Event[people[user].option].text
+    return Events[people[user].option].text
 def status(user, name):
-    global people, Event, payment
+    global people, Events, payment
     msg = ""
     if user == DAD or user == ADMIN:
         if name:
@@ -860,7 +893,7 @@ def status(user, name):
             if valid:
                 person = people[number]
                 msg += name + ' is ' + '' if person.going else 'not ' + 'going\n'
-                questions = [x.getText() for x in Event]
+                questions = [x.getText() for x in Events]
                 for i in range(len(questions)):
                     msg += '\n' + questions[i] + ': ' + person.answers[i]
                 return msg
@@ -875,9 +908,9 @@ def status(user, name):
             msg += "\n" + v.name.title()
 
     if user == DAD or user == ADMIN:
-        mylist = Event
+        mylist = Events
     else:
-        mylist = list(filter(lambda x: isinstance(x, Vote),Event))
+        mylist = list(filter(lambda x: isinstance(x, Vote), Events))
     for event in mylist:
         msg += '\n\n' + event.getText()
         if isinstance(event, Vote):
