@@ -55,7 +55,7 @@ class Person:
         self.starting = starting
         self.going = dad
         self.answers = []
-class Pole:
+class Poll:
     def __init__(self):
         self.text = ""
         self.theme = ""
@@ -72,7 +72,7 @@ class Pole:
             return False
         except:
             return False
-    def endPole(self, users):
+    def endpoll(self, users):
         if users == self.count:
             return self.findWinner()
         first = 0
@@ -92,9 +92,9 @@ class Pole:
             if self.tally[i] == max(self.tally):
                 winners.append(self.options[i])
         if len(winners) > 1:
-            self.winner = "After a coinflip, " + random.choice(winners) + " wins the pole!"
+            self.winner = "After a coinflip, " + random.choice(winners) + " wins the poll!"
             return True
-        self.winner = winners[0] + " wins the pole!"
+        self.winner = winners[0] + " wins the poll!"
         return True
     def getText(self):
         return self.theme
@@ -294,10 +294,11 @@ loaded = False
 people = {DAD:Person('todd', False, True)}
 Events = []
 announcements = []
-currentPole = None
+currentPoll = None
 currentGame = None
-Welcome = "Hi there! I am Todd's birthday gift created by his incredibly gifted son. I am a chat bot here to " \
-          "invite you to his latest shenanigans and keep things organized for him. Say yes to join :)"
+# Welcome = "Hi there! I am Todd's birthday gift created by his incredibly gifted son. I am a chat bot here to " \
+#           "invite you to his latest shenanigans and keep things organized for him. Say yes to join :)"
+Welcome = "This is Zach's project. Send 'y' if you would like to participate"
 happyBday = "Happy birthday Dad! This number is your gift this year. I am a chat bot to help out with " \
             "Mesquite and other events you want to plan. I can help coordinate who plans on going, " \
             "what time people want to go as well as any other questions you may want to know to help you plan the event " \
@@ -448,17 +449,17 @@ def announceHistory(user):
     return ""
 def broadcast(user, msg):
     global announcements, people
-    pole = False
+    poll = False
     if user:
         mode = people[user].mode
         if 'A' in mode:
             announcements.append(msg)
         if 'p' in mode:
-            pole = True
-            ending = currentPole.endPole(peopleGoing())
+            poll = True
+            ending = currentPoll.endpoll(peopleGoing())
     for k,v in people.items():
         if k != user and v.going and v.mode != 'r':
-            if pole:
+            if poll:
                 if ending:
                     people[k].mode = 'h'
                 else:
@@ -488,17 +489,17 @@ def checkPerson(user, msg):
         msg = 'Didn\'t find that name in the group. "status" will show you all names in group'
     return msg
 def clean(user):
-    global currentPole
+    global currentPoll
     mode = people[user].mode
     if 'p' in mode:
         if 'i' in mode:
             if '2' in mode:
                 people[user].mode = 'p'
-                currentPole.setText()
+                currentPoll.setText()
                 return
-            currentPole = None
+            currentPoll = None
         else:
-            currentPole.count += 1
+            currentPoll.count += 1
     if 'q' in mode or 'v' in mode:
         people[DAD].mode = 's'
         people[DAD].option = 0
@@ -516,7 +517,7 @@ def clean(user):
     people[user].buffer = ""
     save('current')
 def decode(user, oMsg):
-    global currentEvent, payment, people, Events, announcements, currentPole, currentGame, safetyPlug
+    global currentEvent, payment, people, Events, announcements, currentPoll, currentGame, safetyPlug
     msg = oMsg.lower().strip()
     mode = people[user].mode
     if len(msg) < 1:
@@ -649,16 +650,16 @@ def decode(user, oMsg):
                         return startGame(user, msg)
                     except:
                         return FAIL
-                elif msg == "pole":
+                elif msg == "poll":
                     people[user].mode = 'p'
-                    if currentPole:
-                        currentPole.findWinner()
-                        broadcast(user, currentPole.winner)
-                        currentPole = None
+                    if currentPoll is not None:
+                        currentPoll.findWinner()
+                        msg = broadcast(user, currentPoll.winner)
+                        currentPoll = None
                         clean(user)
-                        return ""
-                    currentPole = Pole()
-                    return pole(user, 0)
+                        return msg
+                    currentPoll = Poll()
+                    return poll(user, 0)
                 elif msg == "pullsafetyplug":
                     safetyPlug = not safetyPlug
                     return "un" if safetyPlug else "" + "plugged"
@@ -683,23 +684,23 @@ def decode(user, oMsg):
         clean(user)
         return "Message sent"
     elif 'p' in mode:
-        if currentPole is None:
+        if currentPoll is None:
             people[user].mode = 'h'
             return decode(user, oMsg)
         if 'i' in mode:
             if msg == 'end':
                 people[user].mode = 'pi2'
                 clean(user)
-                return "Pole is now running. Cast your vote too\n" + broadcast(user, currentPole.text)
+                return "Poll is now running. Cast your vote too\n" + broadcast(user, currentPoll.text)
             i = people[user].option
-            currentPole.options.append(oMsg)
-            currentPole.tally.append(0)
-            return pole(user, i + 1)
-        if currentPole.addTally(msg):
+            currentPoll.options.append(oMsg)
+            currentPoll.tally.append(0)
+            return poll(user, i + 1)
+        if currentPoll.addTally(msg):
             msg = "Your vote has been cast"
-            if currentPole.endPole(peopleGoing()):
-                msg = broadcast(user, currentPole.winner)
-                currentPole = None
+            if currentPoll.endpoll(peopleGoing()):
+                msg = broadcast(user, currentPoll.winner)
+                currentPoll = None
             people[user].mode = 'h'
             return msg
         return 'Not valid. "?" for help'
@@ -798,21 +799,21 @@ def help(user):
         msg += '"status" to see people in the event'
         msg += ', your payment status ' if payment else ' '
         msg += 'and current results of all votes'
-        msg += '. Type status and a name to see more specifics about them ("status zach")' if user == DAD else ""
+        msg += '. Type status and a name to see more specifics about them' if user == DAD else ""
         msg += '\n"add" to add someone to the group\n'
         if user == DAD or user == ADMIN:
             msg += '"announce" to send a message to everyone\n'
-            msg += '"pole" to start a pole (e.g. dinner choices)\n'
+            msg += '"poll" to start a poll\n'
         msg += '"end" to end the event for ' + ("everyone" if user == DAD else "yourself")
     elif 'm' in people[user].mode:
         msg += '"back" to stop messaging'
     elif 'p' in mode:
         if '1' in mode or '2' in mode:
-            msg += '"back" to not send out this pole\n'
+            msg += '"back" to not send out this poll\n'
             msg += '"end" to finish list of options'
         else:
             msg += 'Your answer should just be the number of the option you choose\n'
-            msg += '"back" cast no vote in the pole'
+            msg += '"back" cast no vote in the poll'
     elif 'P' in mode:
         msg += '"back" exit payment checklist mode'
     elif 'q' in mode or 'v' in mode:
@@ -859,20 +860,20 @@ def peopleGoing():
         if v.going:
             count += 1
     return count
-def pole(user, i):
+def poll(user, i):
     people[user].option = i
     people[user].mode = 'pi1'
     if i > 0:
         return "Type now option " + str(i)
-    return "What should the pole be about?"
+    return "What should the poll be about?"
 def restart():
-    global currentEvent, payment, people, Events, announcements, currentPole, currentGame
+    global currentEvent, payment, people, Events, announcements, currentPoll, currentGame
     currentEvent = False
     payment = False
     people = {DAD : Person('Todd', False, True)}
     Events = []
     announcements = []
-    currentPole = None
+    currentPoll = None
     currentGame = None
 def save(s):
     global currentEvent, payment, people, Events, announcements
@@ -959,8 +960,8 @@ if __name__ == '__main__':
 # g = golf game
 # h = home
 # m = message
-# p = pole mode
-# pi = pole initiate
+# p = poll mode
+# pi = poll initiate
 # P = pay mode
 # q = question
 # r = ramp up
