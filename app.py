@@ -127,8 +127,8 @@ class Game:
             for team in self.teams:
                 bestball = []
                 for i in range(18):
-                    bestball.append(min([x[i] for x in team]))
-            msg += ','.join([x.title() for x in team]) + ': ' + str(sum(bestball)) + '\n'
+                    bestball.append(min([self.scores[x][i] for x in team]))
+                msg += ','.join([x.title() for x in team]) + ': ' + str(int(sum(bestball))) + '\n'
         bestball = []
         for i in range(18):
             bestball.append(min([x[i] for x in self.scores.values()]))
@@ -143,7 +143,7 @@ class Game:
                 for i in range(18):
                     score = self.scores[team[(i%len(team))]][i]
                     pinkball.append(score)
-                msg += ','.join([x.title() for x in team]) + ': ' + str(sum(pinkball)) + '\n'
+                msg += ','.join([x.title() for x in team]) + ': ' + str(int(sum(pinkball))) + '\n'
             msg += '\n'
         return msg
     def selectHandicaps(self, tees):
@@ -165,7 +165,7 @@ class Game:
             group = 0
             team = []
             for name in temp:
-                if case % 4 != 0 and team is None:
+                if case % 4 != 0 and not team:
                     group += 1
                     case += 1
                 team.append(name)
@@ -224,7 +224,7 @@ class Game:
                     skinCount[name] += ',' + str(i+1)
                 else:
                     skinCount[name] = str(i+1)
-        if skinCount is None:
+        if not skinCount:
             return 'No skins'
         for k,v in skinCount.items():
             msg += '\n' + k.title() + ': ' + format(v)
@@ -235,6 +235,7 @@ class Game:
         for k,v in self.scores.items():
             val = int(sum(v))
             msg += k.title() + ": " + str(people[getNumber(k)[1]].lastScore) + ' for ' + str(val) + '\n'
+        msg += '\n'
         msg += self.pinkball()
         msg += self.bestball()
         msg += self.skins()
@@ -246,6 +247,8 @@ class Question:
         self.no = 0
     def getText(self):
         return self.text
+    def setText(self):
+        return
 class Vote:
     def __init__(self):
         self.text = ""
@@ -286,7 +289,7 @@ class Vote:
 #DAD = os.getenv("DAD_NUM")
 DAD = os.getenv("ADMIN_NUM")
 ADMIN = os.getenv("ADMIN_NUM")
-FAIL = 'Unrecognized response. Type "?" to see command options'
+FAIL = 'Unrecognized command. Type "?" to see command options'
 currentEvent = False
 safetyPlug = False
 payment = False
@@ -296,6 +299,7 @@ Events = []
 announcements = []
 currentPoll = None
 currentGame = None
+Schedule = "No schedule set yet"
 # Welcome = "Hi there! I am Todd's birthday gift created by his incredibly gifted son. I am a chat bot here to " \
 #           "invite you to his latest shenanigans and keep things organized for him. Say yes to join :)"
 Welcome = "This is Zach's project. Send 'y' if you would like to participate"
@@ -351,7 +355,7 @@ def dataEntered(handicap,holes,tees,name):
             netScore = currentGame.pars[hole] + 2
         net.append(netScore)
     currentGame.scores[name] = net
-    differential = sum(net) - courseHandicap(handicap,tees) - sum(currentGame.pars)
+    differential = sum(net) - sum(currentGame.pars)
     if -10 < differential or safetyPlug:
         people[getNumber(name)[1]].lastScore = int(sum(net)) + courseHandicap(handicap,tees)
         return True
@@ -413,6 +417,9 @@ def addNum(user):
             return "They are already signed up for the event"
     clean(user)
     return msg
+def addItinerary():
+    people[DAD].mode = 'I1'
+    return "What should be the itinerary?"
 def addQuestion():
     people[DAD].mode = 'q1'
     return "Type now your yes or no question"
@@ -503,7 +510,7 @@ def clean(user):
     if 'q' in mode or 'v' in mode:
         people[DAD].mode = 's'
         people[DAD].option = 0
-        if 'v2' in mode:
+        if '2' in mode:
             Events[-1].setText()
         else:
             Events.pop(-1)
@@ -516,8 +523,9 @@ def clean(user):
         people[user].mode = 'h'
     people[user].buffer = ""
     save('current')
+    return 'OK'
 def decode(user, oMsg):
-    global currentEvent, payment, people, Events, announcements, currentPoll, currentGame, safetyPlug
+    global currentEvent, payment, people, Events, announcements, currentPoll, currentGame, safetyPlug, Schedule
     msg = oMsg.lower().strip()
     mode = people[user].mode
     if len(msg) < 1:
@@ -628,6 +636,11 @@ def decode(user, oMsg):
                 return FAIL
         elif msg == "pay" and payment:
             return pay(user)
+        elif "schedule" in msg:
+            if msg == "schedule":
+                return Schedule
+            elif user == DAD and msg == "set schedule":
+                return addItinerary()
         elif "status" in msg:
             if msg == "status":
                 return status(user, None)
@@ -641,6 +654,15 @@ def decode(user, oMsg):
             if currentEvent:
                 if msg == "announce":
                     return announce(user)
+                elif "kick" in msg:
+                    if msg == "kick":
+                        people[user].mode = 'k1'
+                        return "Who would you like to add?"
+                    try:
+                        name = msg.split(' ',1)[1]
+                        return kickStepOne(user, name)
+                    except:
+                        return FAIL
                 elif "play" in msg:
                     if msg == 'play':
                         people[user].mode = 'g'
@@ -677,6 +699,30 @@ def decode(user, oMsg):
                         return "Team setup unsuccessful"
                     except:
                         return FAIL
+    elif 'I' in mode:
+        if '1' in mode:
+            people[DAD].mode = 'I2'
+            people[DAD].buffer = oMsg
+            return "This is what will be seen:\n " + oMsg
+        if 'y' == msg[0]:
+            clean(DAD)
+            return "Itinerary set"
+        elif 'n' == msg[0]:
+            return addItinerary()
+        return "Only expecting 'y' or 'n'"
+    elif 'k' in mode:
+        if '1' in mode:
+            return kickStepOne(user, msg)
+        if '2' in mode:
+            if 'y' == mode[0]:
+                peep = getNumber(people[user].buffer)[1]
+                send(peep, "You have been removed from the group :(")
+                del people[peep]
+                return "Removed them from the event"
+            elif 'n' == msg[0]:
+                clean(user)
+                return "Ok"
+            return "Only expecting 'y' or 'n'"
     elif 'm' in mode:
         if '1' in mode:
             return checkPerson(user, msg)
@@ -713,13 +759,13 @@ def decode(user, oMsg):
         return 'Name not found in group. Type "status" to see all who are present'
     elif 'q' in mode:
         if '1' in mode:
-            people[DAD].mode = 'q2'
+            people[DAD].mode = 'q3'
             people[DAD].buffer = oMsg
-            return "Are you sure that you want to ask: " + oMsg
+            return "Are you sure that you want to ask:\n" + oMsg
         if 'y' == msg[0]:
-            people[DAD].mode = 's'
             Events[-1].text = people[DAD].buffer
-            people[DAD].buffer = ''
+            people[DAD].mode = 'q2'
+            clean(DAD)
             return "Question now in sign up"
         elif 'n' == msg[0]:
             return addQuestion()
@@ -796,15 +842,22 @@ def help(user):
         elif user == DAD:
             msg += '"pay" to check someone off for paying\n'
         msg += '"message" to begin message to someone\n'
-        msg += '"status" to see people in the event'
-        msg += ', your payment status ' if payment else ' '
-        msg += 'and current results of all votes'
-        msg += '. Type status and a name to see more specifics about them' if user == DAD else ""
         msg += '\n"add" to add someone to the group\n'
+        msg += '"schedule" to see what is posted to the schedule'
+        msg += '"status" to see people in the event'
+        msg += ', current results of all votes ' if user == DAD else ' '
+        msg += 'and your payment status' if payment else '\n'
         if user == DAD or user == ADMIN:
+            msg += '. Type status and a name to see more specifics about them'
             msg += '"announce" to send a message to everyone\n'
             msg += '"poll" to start a poll\n'
+            msg += '"set schedule" to set and reset the schedule\n'
+            msg += '"kick" to remove a player from the event\n'
         msg += '"end" to end the event for ' + ("everyone" if user == DAD else "yourself")
+    elif 'I' in mode:
+        msg += '"back" don\'t change the schedule page'
+    elif 'k' in mode:
+        msg += '"back" stop kicking mode'
     elif 'm' in people[user].mode:
         msg += '"back" to stop messaging'
     elif 'p' in mode:
@@ -834,6 +887,15 @@ def help(user):
         msg += '"back" to end sign up and start adding people\n'
         msg += '"end" to restart'
     return msg
+def kickStepOne(user, msg):
+    global people
+    people[user].buffer = msg
+    for val in people.values():
+        if msg == val.name:
+            return "Remove " + msg + '?'
+    else:
+        clean(user)
+        return "Name not in event"
 def load(s):
     global currentEvent, payment, people, Events, announcements
     try:
@@ -938,16 +1000,13 @@ def status(user, name):
             msg += "\n" + v.name.title()
 
     if user == DAD or user == ADMIN:
-        mylist = Events
-    else:
-        mylist = list(filter(lambda x: isinstance(x, Vote), Events))
-    for event in mylist:
-        msg += '\n\n' + event.getText()
-        if isinstance(event, Vote):
-            for i in range(len(event.options)):
-                msg += '\n' + event.options[i] + ': ' + str(event.tally[i])
-        elif isinstance(event, Question):
-            msg += '\nYes: ' + str(event.yes) + "\nNo: " + str(event.no)
+        for event in Events:
+            msg += '\n\n' + event.getText()
+            if isinstance(event, Vote):
+                for i in range(len(event.options)):
+                    msg += '\n' + event.options[i] + ': ' + str(event.tally[i])
+            elif isinstance(event, Question):
+                msg += '\nYes: ' + str(event.yes) + "\nNo: " + str(event.no)
     return msg
 
 if __name__ == '__main__':
@@ -959,6 +1018,7 @@ if __name__ == '__main__':
 # e = end
 # g = golf game
 # h = home
+# I = itinerary
 # m = message
 # p = poll mode
 # pi = poll initiate
