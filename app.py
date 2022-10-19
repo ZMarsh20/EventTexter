@@ -539,7 +539,7 @@ def decode(user, oMsg):
         if 'y' == msg[0]:
             people[user].going = True
             people[user].starting = False
-            if len(Events) > 0:
+            if Events:
                 people[user].mode = 'r'
                 msg = Events[people[user].option].text
                 return "Now getting you ramped up...\n" + msg
@@ -657,7 +657,7 @@ def decode(user, oMsg):
                 elif "kick" in msg:
                     if msg == "kick":
                         people[user].mode = 'k1'
-                        return "Who would you like to add?"
+                        return "Who would you like to remove?"
                     try:
                         name = msg.split(' ',1)[1]
                         return kickStepOne(user, name)
@@ -714,10 +714,11 @@ def decode(user, oMsg):
         if '1' in mode:
             return kickStepOne(user, msg)
         if '2' in mode:
-            if 'y' == mode[0]:
+            if 'y' == msg[0]:
                 peep = getNumber(people[user].buffer)[1]
                 send(peep, "You have been removed from the group :(")
                 del people[peep]
+                clean(user)
                 return "Removed them from the event"
             elif 'n' == msg[0]:
                 clean(user)
@@ -892,6 +893,7 @@ def kickStepOne(user, msg):
     people[user].buffer = msg
     for val in people.values():
         if msg == val.name:
+            people[user].mode = 'k2'
             return "Remove " + msg + '?'
     else:
         clean(user)
