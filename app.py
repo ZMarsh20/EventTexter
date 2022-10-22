@@ -332,17 +332,17 @@ def score():
             msg += "If the score is accurate, ask admin to override before retrying"
             return msg
         return render_template("scores.html", courseName=currentGame.name.title(),
-                                            tees=currentGame.tees,
-                                            holes=holes,
-                                            handicap=handicap,
-                                            pars=currentGame.pars,
-                                            nameFail=True)
+                               tees=currentGame.tees,
+                               holes=holes,
+                               handicap=handicap,
+                               pars=currentGame.pars,
+                               nameFail=True)
     return render_template("scores.html", courseName=currentGame.name.title(),
-                                        tees=currentGame.tees,
-                                        holes=None,
-                                        handicap=None,
-                                        pars=currentGame.pars,
-                                        nameFail=False)
+                           tees=currentGame.tees,
+                           holes=None,
+                           handicap=None,
+                           pars=currentGame.pars,
+                           nameFail=False)
 def dataEntered(handicap,holes,tees,name):
     global currentGame, safetyPlug
     net = []
@@ -386,7 +386,7 @@ def text():
             msg = resp.message()
             msg.body(decode(incoming_number, incoming_msg))
             return str(resp)
-        except:
+        except Exception as e:
             pass
     return ':3'
 def addAll():
@@ -396,7 +396,8 @@ def addAll():
     for peep in peeps:
         if peep.number not in people:
             msg += '\n' + peep.name.title()
-            addNum(peep.number)
+            people[peep.number] = Person(peep.name)
+            send(peep.number, Welcome)
     return msg
 def addNum(user):
     msg = "Got it"
@@ -414,7 +415,7 @@ def addNum(user):
             people[number] = Person(name)
             send(number, Welcome)
         else:
-            return "They are already signed up for the event"
+            msg = "They are already signed up for the event"
     clean(user)
     return msg
 def addItinerary():
@@ -424,12 +425,13 @@ def addQuestion():
     people[DAD].mode = 'q1'
     return "Type now your yes or no question"
 def addStepOne(user, msg):
+    global people
     if len(msg) > 40:
         return "Name is to long please retype it. Try again"
     elif ',' in msg:
         return "No commas allowed in name. Try again"
     if user == DAD and msg == "all":
-        people(DAD).mode == 'a4'
+        people[DAD].mode = 'a4'
         return "Add everyone that's in the database?"
     people[user].buffer = msg
     if Contacts.query.filter_by(name=msg).first() is None:
@@ -451,7 +453,7 @@ def announceHistory(user):
     global announcements
     for msg in announcements:
         send(user, msg)
-    if len(announcements) > 0:
+    if announcements:
         return "You should get the announcement's you've missed"
     return ""
 def broadcast(user, msg):
@@ -523,7 +525,7 @@ def clean(user):
         people[user].mode = 'h'
     people[user].buffer = ""
     save('current')
-    return 'OK'
+    return 'Ok'
 def decode(user, oMsg):
     global currentEvent, payment, people, Events, announcements, currentPoll, currentGame, safetyPlug, Schedule
     msg = oMsg.lower().strip()
@@ -544,7 +546,7 @@ def decode(user, oMsg):
                 msg = Events[people[user].option].text
                 return "Now getting you ramped up...\n" + msg
             clean(user)
-            return 'Welcome. Type "?" to see your options' + announceHistory()
+            return 'Welcome. Type "?" to see your options' + announceHistory(user)
         elif not people[user].limitOutput:
             if 'n' == msg[0]:
                 people[user].limitOutput = True
@@ -566,6 +568,7 @@ def decode(user, oMsg):
             return addStepOne(user, msg)
         elif '4' in mode:
             if 'y' == msg[0]:
+                clean(DAD)
                 return addAll()
             elif 'n' == msg[0]:
                 clean(DAD)
@@ -630,7 +633,7 @@ def decode(user, oMsg):
                 return "Who would you like to message?"
             try:
                 name = msg.split(' ',1)[1]
-                return checkPerson(name, user)
+                return checkPerson(user, name)
             except:
                 clean(user)
                 return FAIL
@@ -650,61 +653,61 @@ def decode(user, oMsg):
                     return status(user,name)
                 except:
                     return FAIL
-        elif user == DAD or user == ADMIN:
-            if currentEvent:
-                if msg == "announce":
-                    return announce(user)
-                elif "kick" in msg:
-                    if msg == "kick":
-                        people[user].mode = 'k1'
-                        return "Who would you like to remove?"
-                    try:
-                        name = msg.split(' ',1)[1]
-                        return kickStepOne(user, name)
-                    except:
-                        return FAIL
-                elif "play" in msg:
-                    if msg == 'play':
-                        people[user].mode = 'g'
-                        return "What course?"
-                    try:
-                        msg = msg.split(' ',1)[1]
-                        return startGame(user, msg)
-                    except:
-                        return FAIL
-                elif msg == "poll":
-                    people[user].mode = 'p'
-                    if currentPoll is not None:
-                        currentPoll.findWinner()
-                        msg = broadcast(user, currentPoll.winner)
-                        currentPoll = None
-                        clean(user)
-                        return msg
-                    currentPoll = Poll()
-                    return poll(user, 0)
-                elif msg == "pullsafetyplug":
-                    safetyPlug = not safetyPlug
-                    return "un" if safetyPlug else "" + "plugged"
-                elif "teams" in msg and currentGame:
-                    try:
-                        teams = msg.split(' ',1)[1].split(';')
-                        if teams[0] != 'random':
-                            for team in teams:
-                                for t in team.split(','):
-                                    if not getNumber(t)[0]:
-                                        return t + " is not found"
-                        if currentGame.setTeams(msg.split(' ',1)[1]):
-                            currentGame.broadcast()
-                            return "Teams set"
-                        return "Team setup unsuccessful"
-                    except:
-                        return FAIL
+        elif (user == DAD or user == ADMIN) and currentEvent:
+            if msg == "announce":
+                return announce(user)
+            elif "kick" in msg:
+                if msg == "kick":
+                    people[user].mode = 'k1'
+                    return "Who would you like to remove?"
+                try:
+                    name = msg.split(' ',1)[1]
+                    return kickStepOne(user, name)
+                except:
+                    return FAIL
+            elif "play" in msg:
+                if msg == 'play':
+                    people[user].mode = 'g'
+                    return "What course?"
+                try:
+                    msg = msg.split(' ',1)[1]
+                    return startGame(user, msg)
+                except:
+                    return FAIL
+            elif msg == "poll":
+                people[user].mode = 'p'
+                if currentPoll is not None:
+                    currentPoll.findWinner()
+                    msg = broadcast(user, currentPoll.winner)
+                    currentPoll = None
+                    clean(user)
+                    return msg
+                currentPoll = Poll()
+                return poll(user, 0)
+            elif msg == "pullsafetyplug":
+                safetyPlug = not safetyPlug
+                return "un" if safetyPlug else "" + "plugged"
+            elif "teams" in msg and currentGame:
+                try:
+                    teams = msg.split(' ',1)[1].split(';')
+                    if teams[0] != 'random':
+                        for team in teams:
+                            for t in team.split(','):
+                                if not getNumber(t)[0]:
+                                    return t + " is not found"
+                    if currentGame.setTeams(msg.split(' ',1)[1]):
+                        currentGame.broadcast()
+                        return "Teams set"
+                    return "Team setup unsuccessful"
+                except:
+                    return FAIL
     elif 'I' in mode:
         if '1' in mode:
             people[DAD].mode = 'I2'
             people[DAD].buffer = oMsg
             return "This is what will be seen:\n " + oMsg
         if 'y' == msg[0]:
+            Schedule = people[DAD].buffer
             clean(DAD)
             return "Itinerary set"
         elif 'n' == msg[0]:
@@ -843,13 +846,13 @@ def help(user):
         elif user == DAD:
             msg += '"pay" to check someone off for paying\n'
         msg += '"message" to begin message to someone\n'
-        msg += '\n"add" to add someone to the group\n'
+        msg += '"add" to add someone to the group\n'
         msg += '"schedule" to see what is posted to the schedule'
         msg += '"status" to see people in the event'
-        msg += ', current results of all votes ' if user == DAD else ' '
-        msg += 'and your payment status' if payment else '\n'
+        msg += ', current results of all votes' if user == DAD else ''
+        msg += ' and your payment status.\n' if payment else '.\n'
         if user == DAD or user == ADMIN:
-            msg += '. Type status and a name to see more specifics about them'
+            msg += 'Type status and a name to see more specifics about them'
             msg += '"announce" to send a message to everyone\n'
             msg += '"poll" to start a poll\n'
             msg += '"set schedule" to set and reset the schedule\n'
