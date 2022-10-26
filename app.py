@@ -259,24 +259,9 @@ class Vote:
         val = 1
         if negate:
             val = -1
-        if msg == 'none':
-            return True
-        try:
-            votesTemp = msg.split(',')
-            votes = []
-            for vote in votesTemp:
-                if vote not in votes:
-                    votes.append(vote)
-            weight = len(self.options)
-            for vote in votes:
-                if 0 < int(vote) <= len(self.options):
-                    self.tally[int(vote)-1] += (weight * val)
-                    weight -= 1
-                else:
-                    return False
-            return True
-        except:
-            return False
+        votes = msg.split(',')
+        for i in range(len(votes)):
+            self.tally[i] += int(votes[i]) * val
     def getText(self):
         return self.theme
     def setText(self):
@@ -290,6 +275,7 @@ class Vote:
 DAD = os.getenv("ADMIN_NUM")
 ADMIN = os.getenv("ADMIN_NUM")
 FAIL = 'Unrecognized command. Type "?" to see command options'
+ROUTE = 'http://zmarshall.pythonanywhere.com/'
 currentEvent = False
 safetyPlug = False
 payment = False
@@ -308,7 +294,16 @@ happyBday = "Happy birthday Dad! This number is your gift this year. I am a chat
             "what time people want to go as well as any other questions you may want to know to help you plan the event " \
             "and the coolest part, automate scoring to know who won bestball, pinkball and skins!!!"
 
-@app.route('/', methods=['GET', 'POST'])
+@app.route('/help/<code>', methods=['GET', 'POST'])
+def helpRoute(code):
+    global people
+    for user,peep in people.items():
+        if peep.buffer == code:
+            people[user].buffer = ""
+            return help(user).replace('\n','<br>')
+    return "I can't help you unfortunately. Please request a new link"
+
+@app.route('/score', methods=['GET', 'POST'])
 def score():
     global currentGame
     if currentGame is None:
@@ -370,6 +365,54 @@ def courseHandicap(handicap,tees):
     val = round((handicap * currentGame.slopes[i])/113 + currentGame.rating[i] - sum(currentGame.pars))
     return -val if plus else val
 
+@app.route('/signup/<code>', methods=['GET', 'POST'])
+def signupRoute(code):
+    global people, Events
+    if request.method == 'POST' and code == '0':
+        user = request.form['user']
+        count = 0
+        for event in Events:
+            count += 1
+            if isinstance(event, Vote):
+                msg = ""
+                for i in range(len(event.options)):
+                    msg += request.form[str(count)+'[' + str(i) + ']'] + ','
+                msg = msg[:-1]
+                event.addTally(msg)
+            else:
+                if request.form.get(str(count)):
+                    msg = 'yes'
+                    event.yes += 1
+                else:
+                    msg = 'no'
+                    event.no += 1
+            people[user].answers.append(msg)
+        return 'All signed in! "?" for options. ' + announceHistory(user)
+    else:
+        for user,peep in people.items():
+            if peep.buffer == code:
+                people[user].buffer = ""
+                questions = []
+                for event in Events:
+                    if isinstance(event, Vote):
+                        temp = event.options[:]
+                        temp.insert(0,event.theme)
+                        questions.append(temp)
+                    else:
+                        questions.append(event.text)
+                return render_template("signup.html",user=user,questions=questions)
+            send(DAD,peep.buffer)
+        return  "I can't help you unfortunately. Please request a new link"
+
+@app.route('/answers/<code>', methods=['GET', 'POST'])
+def statusRoute(code):
+    global people
+    for user,peep in people.items():
+        if peep.buffer == code:
+            people[user].buffer = ""
+            return answers().replace('\n','<br>')
+    return "I can't help you unfortunately"
+
 @app.route('/text', methods=['GET', 'POST'])
 def text():
     global loaded
@@ -387,7 +430,7 @@ def text():
             msg.body(decode(incoming_number, incoming_msg))
             return str(resp)
         except Exception as e:
-            pass
+            send(ADMIN, str(e))
     return ':3'
 def addAll():
     global people
@@ -456,6 +499,28 @@ def announceHistory(user):
     if announcements:
         return "You should get the announcement's you've missed"
     return ""
+def answers():
+    global people
+    msg = ""
+    for event in Events:
+        msg += event.getText()
+        if isinstance(event, Vote):
+            for i in range(len(event.options)):
+                msg += '\n' + event.options[i] + ': ' + str(event.tally[i])
+        elif isinstance(event, Question):
+            msg += '\nYes: ' + str(event.yes) + "\nNo: " + str(event.no)
+        msg += '\n\n'
+    for person in people.values():
+        if person != people[DAD]:
+            msg += person.name.title() + ' is ' + ('' if person.going else 'not ') + 'going\n'
+            if payment:
+                msg += 'Has ' + ('' if person.paid else 'not ') + 'paid'
+            questions = [x.getText() for x in Events]
+            if person.answers:
+                for i in range(len(questions)):
+                    msg += '\n' + questions[i] + ': ' + person.answers[i]
+            msg += '\n\n'
+    return msg
 def broadcast(user, msg):
     global announcements, people
     poll = False
@@ -543,8 +608,10 @@ def decode(user, oMsg):
             people[user].starting = False
             if Events:
                 people[user].mode = 'r'
-                msg = Events[people[user].option].text
-                return "Now getting you ramped up...\n" + msg
+                code = getCode()
+                people[user].buffer = code
+                send(user,(ROUTE+'signup/' + code))
+                return "Welcome! You should have a link to the sign in sheet now"
             clean(user)
             return 'Welcome. Type "?" to see your options' + announceHistory(user)
         elif not people[user].limitOutput:
@@ -555,7 +622,9 @@ def decode(user, oMsg):
     if not people[user].going:
         return ""
     if msg == "?":
-        return help(user)
+        code = getCode()
+        people[user].buffer = code
+        return ROUTE + "help/" + code
     if msg == 'back':
         if 'r' in mode:
             return startOver(user)
@@ -590,7 +659,7 @@ def decode(user, oMsg):
         if '1' in mode:
             people[user].buffer = "Announcement: " + oMsg
             people[user].mode = 'A2'
-            return "Announce this? " + oMsg
+            return "Announce this?\n" + oMsg
         if 'y' == msg[0]:
             broadcast(user, people[user].buffer)
             clean(user)
@@ -644,15 +713,12 @@ def decode(user, oMsg):
                 return Schedule
             elif user == DAD and msg == "set schedule":
                 return addItinerary()
-        elif "status" in msg:
-            if msg == "status":
-                return status(user, None)
-            elif user == DAD:
-                try:
-                    name = msg.split(' ',1)[1]
-                    return status(user,name)
-                except:
-                    return FAIL
+        elif msg == "status":
+            if user == DAD or user == ADMIN:
+                code = getCode()
+                people[user].buffer = code
+                return ROUTE + "answers/" + code
+            return status(user)
         elif (user == DAD or user == ADMIN) and currentEvent:
             if msg == "announce":
                 return announce(user)
@@ -724,8 +790,7 @@ def decode(user, oMsg):
                 clean(user)
                 return "Removed them from the event"
             elif 'n' == msg[0]:
-                clean(user)
-                return "Ok"
+                return clean(user)
             return "Only expecting 'y' or 'n'"
     elif 'm' in mode:
         if '1' in mode:
@@ -776,26 +841,10 @@ def decode(user, oMsg):
         return "Only expecting 'y' or 'n'"
     elif 'r' in mode:
         if msg == "end":
+            clean(user)
             people[user].going = False
             people[user].starting = True
             return "Just reply 'y' if you change your mind"
-        i = people[user].option
-        if isinstance(Events[i], Vote) and not Events[i].addTally(msg):
-            return 'Answers should be comma separated numbers. "?" for examples'
-        elif isinstance(Events[i], Question) and ('y' == msg[0] or 'n' == msg[0]):
-            if 'y' == msg[0]:
-                Events[i].yes += 1
-            elif 'n' == msg[0]:
-                Events[i].no += 1
-            else:
-                return "Only expecting 'y' or 'n'"
-        people[user].answers.append(msg)
-        people[user].option += 1
-        if i+1 >= len(Events):
-            clean(user)
-            return 'Thank you. Type "?" for your options\n' + announceHistory(user)
-        msg = Events[people[user].option].text
-        return "Answer locked in. Next question:\n" + msg
     elif 's' in mode:
         if msg == "question":
             Events.append(Question())
@@ -827,69 +876,78 @@ def decode(user, oMsg):
         Events[-1].tally.append(0)
         return addVote(i+1)
     return FAIL
+def getCode():
+    global people
+    while True:
+        code = random.randint(1000000,9999999)
+        for peep in people.values():
+            if peep.buffer == code:
+                break
+        else:
+            break
+    return str(code)
 def getNumber(name):
     global people
     for k,v in people.items():
-        if v.name == name and v.going:
-            return True, k
+        if v.name == name:
+            return v.going, k
     return False, ""
 def help(user):
     mode = people[user].mode
-    msg = '"?" shows available commands\n'
+    msg = '"?" shows available commands. Commands are NOT case sensitive\n'
     if 'a' in mode:
-        msg += '"back" stop adding number'
+        msg += '\n"back" stop trying to add a number'
     elif 'A' in mode:
-        msg += '"back" Exit announcement mode'
+        msg += '\n"back" stop trying to make an announcement'
     elif 'h' in mode:
-        if not people[user].paid and payment:
-            msg += '"pay" to request Todd to check you off for paying everything. Send image proof to him directly\n'
-        elif user == DAD:
-            msg += '"pay" to check someone off for paying\n'
-        msg += '"message" to begin message to someone\n'
-        msg += '"add" to add someone to the group\n'
-        msg += '"schedule" to see what is posted to the schedule'
-        msg += '"status" to see people in the event'
-        msg += ', current results of all votes' if user == DAD else ''
-        msg += ' and your payment status.\n' if payment else '.\n'
+        if payment:
+            if not people[user].paid:
+                msg += '\n"pay" to request Todd to check you off for paying everything. Send image proof to him directly\n'
+            elif user == DAD:
+                msg += '\n"pay" to check someone off for paying\n'
+        msg += '\n"message" or "msg" to begin messaging to someone on the going list.'
+        msg +=' Add a name for a shortcut: "Msg todd". Type status to see name list\n'
+        msg += '\n"add" to add someone to the group. Add a name for a shortcut: "Add todd"\n'
+        msg += '\n"schedule" to see what is posted to the schedule\n'
+        msg += '\n"status" to see people in the event'
+        msg += ', current answers to all questions' if user == DAD else ''
+        msg += ' and your payment status. ' if payment else '. '
         if user == DAD or user == ADMIN:
-            msg += 'Type status and a name to see more specifics about them'
-            msg += '"announce" to send a message to everyone\n'
-            msg += '"poll" to start a poll\n'
-            msg += '"set schedule" to set and reset the schedule\n'
-            msg += '"kick" to remove a player from the event\n'
-        msg += '"end" to end the event for ' + ("everyone" if user == DAD else "yourself")
+            msg += '\n"announce" to send a message to everyone\n'
+            msg += '\n"poll" to start a poll\n'
+            msg += '\n"set schedule" to set and reset the schedule\n'
+            msg += '\n"kick" to remove a player from the event. Add a name for a shortcut: "Kick zach"\n'
+        else:
+            msg += '\n'
+        msg += '\n"end" to end the event for ' + ("everyone" if user == DAD else "yourself")
     elif 'I' in mode:
-        msg += '"back" don\'t change the schedule page'
+        msg += '\n"back" don\'t change the schedule page'
     elif 'k' in mode:
-        msg += '"back" stop kicking mode'
+        msg += '\n"back" stop kicking mode'
     elif 'm' in people[user].mode:
-        msg += '"back" to stop messaging'
+        msg += '\n"back" to stop messaging'
     elif 'p' in mode:
         if '1' in mode or '2' in mode:
-            msg += '"back" to not send out this poll\n'
-            msg += '"end" to finish list of options'
+            msg += '\n"back" to not send out this poll\n'
+            msg += '\n"end" to finish list of options'
         else:
-            msg += 'Your answer should just be the number of the option you choose\n'
-            msg += '"back" cast no vote in the poll'
+            msg += '\nYour answer should just be the number of the option you choose\n'
+            msg += '\n"back" cast no vote in the poll'
     elif 'P' in mode:
-        msg += '"back" exit payment checklist mode'
+        msg += '\n"back" exit payment checklist mode'
     elif 'q' in mode or 'v' in mode:
-        msg += '"back" to not add this to sign up'
+        msg += '\n"back" to not add this to sign up'
         if 'v' in mode:
-            msg += '\n"end" to finish list of vote'
+            msg += '\n\n"end" to finish list of vote'
     elif 'r' in mode:
-        msg += 'If there is a list with numbers then expected replies are as follows:\n'
-        msg += '1,2,3,4,5,6,ect. to the amount of options or 1,2,3 to add only to those options (help prioritize your choices) or "none" for no choice\n'
-        msg += 'If there is no list then only a yes or no is expected\n'
-        msg += '"back" to start over questionnaire\n'
-        msg += '"end" to leave if you changed you mind'
+        msg += '\n"end" if you change your mind and don\'t want to sign up'
     elif 's' in mode:
-        msg += '"question" to add a yes or no question when signing up\n'
-        msg += '"vote" to add a vote when signing up\n'
-        msg += '"pay" change whether or not you are expecting payment\n'
-        msg += '"status" to see what questions have been added to the event\n'
-        msg += '"back" to end sign up and start adding people\n'
-        msg += '"end" to restart'
+        msg += '\n"question" to add a yes or no question when signing up\n'
+        msg += '\n"vote" to add a vote when signing up\n'
+        msg += '\n"pay" change whether or not you are expecting payment from everyone\n'
+        msg += '\n"status" to see what questions have been added to the event so far\n'
+        msg += '\n"back" to end sign up and start adding people\n'
+        msg += '\n"end" to restart the questionnaire'
     return msg
 def kickStepOne(user, msg):
     global people
@@ -962,7 +1020,7 @@ def showQuestions():
 def startGame(user, msg):
     clean(user)
     if checkCourse(msg):
-        msg = "Game started. Enter game information at http://zmarshall.pythonanywhere.com/. Good luck!"
+        msg = "Game started. Enter game information at " + ROUTE + "score. Good luck!"
         return broadcast(user, msg)
     return "Course not found"
 def startOver(user):
@@ -979,39 +1037,15 @@ def startOver(user):
     people[user].option = 0
     people[user].answers = []
     return Events[people[user].option].text
-def status(user, name):
+def status(user):
     global people, Events, payment
     msg = ""
-    if user == DAD or user == ADMIN:
-        if name:
-            valid, number = getNumber(name)
-            if valid:
-                person = people[number]
-                msg += name + ' is ' + ('' if person.going else 'not ') + 'going\n'
-                if payment:
-                    msg += '\nHas ' + ('' if person.paid else 'not ') + 'paid'
-                questions = [x.getText() for x in Events]
-                for i in range(len(questions)):
-                    msg += '\n\n' + questions[i] + ': ' + person.answers[i]
-                return msg
-            return "Name not found"
-
-    if payment and user != DAD:
+    if payment:
         msg += "You have " + "" if people[user].paid else " NOT " + "paid\n\n"
-
     msg += "Going:"
     for k,v in people.items():
         if people[k].going:
             msg += "\n" + v.name.title()
-
-    if user == DAD or user == ADMIN:
-        for event in Events:
-            msg += '\n\n' + event.getText()
-            if isinstance(event, Vote):
-                for i in range(len(event.options)):
-                    msg += '\n' + event.options[i] + ': ' + str(event.tally[i])
-            elif isinstance(event, Question):
-                msg += '\nYes: ' + str(event.yes) + "\nNo: " + str(event.no)
     return msg
 
 if __name__ == '__main__':
