@@ -769,7 +769,7 @@ def decode(user, oMsg):
                 msg = "Waiting on:"
                 for peep in people.values():
                     if 'p' in peep.mode:
-                        msg += '\n' + peep.name
+                        msg += '\n' + peep.name.title()
                 return msg
     elif 'I' in mode:
         if '1' in mode:
