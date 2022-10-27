@@ -387,6 +387,7 @@ def signupRoute(code):
                     msg = 'no'
                     event.no += 1
             people[user].answers.append(msg)
+        clean(user)
         return 'All signed in! "?" for options. ' + announceHistory(user)
     else:
         for user,peep in people.items():
@@ -401,7 +402,6 @@ def signupRoute(code):
                     else:
                         questions.append(event.text)
                 return render_template("signup.html",user=user,questions=questions)
-            send(DAD,peep.buffer)
         return  "I can't help you unfortunately. Please request a new link"
 
 @app.route('/answers/<code>', methods=['GET', 'POST'])
