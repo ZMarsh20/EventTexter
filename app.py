@@ -49,7 +49,7 @@ class Person:
         self.buffer = ""
         self.option = 0
         self.lastScore = 0
-        self.paid = False
+        self.paid = dad
         self.limitOutput = False
         self.name = name
         self.starting = starting
@@ -563,7 +563,7 @@ def checkPerson(user, msg):
         msg = 'Didn\'t find that name in the group. "status" will show you all names in group'
     return msg
 def clean(user):
-    global currentPoll
+    global currentPoll, people
     mode = people[user].mode
     if 'p' in mode:
         if 'i' in mode:
@@ -626,9 +626,7 @@ def decode(user, oMsg):
         people[user].buffer = code
         return ROUTE + "help/" + code
     if msg == 'back':
-        if 'r' in mode:
-            return startOver(user)
-        elif currentEvent or 's' not in mode:
+        if currentEvent or 's' not in mode:
             return clean(user)
         currentEvent = True
         return "Typing back again will finalize the event. Make sure you're ready"
@@ -767,6 +765,12 @@ def decode(user, oMsg):
                     return "Team setup unsuccessful"
                 except:
                     return FAIL
+            elif msg == "waiting" and currentPoll:
+                msg = "Waiting on:"
+                for peep in people.values():
+                    if 'p' in peep.mode:
+                        msg += '\n' + peep.name
+                return msg
     elif 'I' in mode:
         if '1' in mode:
             people[DAD].mode = 'I2'
@@ -786,6 +790,7 @@ def decode(user, oMsg):
             if 'y' == msg[0]:
                 peep = getNumber(people[user].buffer)[1]
                 send(peep, "You have been removed from the group :(")
+                startOver(peep)
                 del people[peep]
                 clean(user)
                 return "Removed them from the event"
@@ -845,6 +850,10 @@ def decode(user, oMsg):
             people[user].going = False
             people[user].starting = True
             return "Just reply 'y' if you change your mind"
+        elif msg == "link":
+            code = getCode()
+            people[user].buffer = code
+            return ROUTE+'signup/' + code
     elif 's' in mode:
         if msg == "question":
             Events.append(Question())
@@ -914,9 +923,10 @@ def help(user):
         msg += ' and your payment status. ' if payment else '. '
         if user == DAD or user == ADMIN:
             msg += '\n"announce" to send a message to everyone\n'
-            msg += '\n"poll" to start a poll\n'
+            msg += '\n"poll" to start a poll or end one early\n'
             msg += '\n"set schedule" to set and reset the schedule\n'
             msg += '\n"kick" to remove a player from the event. Add a name for a shortcut: "Kick zach"\n'
+            msg += '\n"waiting" to get a list of people that have yet to vote in a poll if there is one\n'
         else:
             msg += '\n'
         msg += '\n"end" to end the event for ' + ("everyone" if user == DAD else "yourself")
@@ -940,6 +950,7 @@ def help(user):
         if 'v' in mode:
             msg += '\n\n"end" to finish list of vote'
     elif 'r' in mode:
+        msg += '\n"link" to send yourself the link again\n'
         msg += '\n"end" if you change your mind and don\'t want to sign up'
     elif 's' in mode:
         msg += '\n"question" to add a yes or no question when signing up\n'
@@ -1033,10 +1044,9 @@ def startOver(user):
             Events[i].no -= 1
         else:
             Events[i].addTally(answers[i], True)
-
     people[user].option = 0
     people[user].answers = []
-    return Events[people[user].option].text
+    return
 def status(user):
     global people, Events, payment
     msg = ""
