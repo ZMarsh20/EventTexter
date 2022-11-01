@@ -103,7 +103,7 @@ class Poll:
         msg = self.theme
         for i in range(len(self.options)):
             msg += '\n' + str(i+1) + ". " + self.options[i]
-        self.text = msg
+        self.text = "New Poll!\n" + msg
 class Game:
     def __init__(self, name, pars, tees, slopes, rating, handicaps):
         self.name = name
@@ -271,8 +271,7 @@ class Vote:
             msg += '\n' + str(i+1) + ". " + self.options[i]
         self.text = msg
 
-#DAD = os.getenv("DAD_NUM")
-DAD = os.getenv("ADMIN_NUM")
+DAD = os.getenv("DAD_NUM")
 ADMIN = os.getenv("ADMIN_NUM")
 FAIL = 'Unrecognized command. Type "?" to see command options'
 ROUTE = 'http://zmarshall.pythonanywhere.com/'
@@ -286,13 +285,15 @@ announcements = []
 currentPoll = None
 currentGame = None
 Schedule = "No schedule set yet"
-# Welcome = "Hi there! I am Todd's birthday gift created by his incredibly gifted son. I am a chat bot here to " \
-#           "invite you to his latest shenanigans and keep things organized for him. Say yes to join :)"
-Welcome = "This is Zach's project. Send 'y' if you would like to participate"
-happyBday = "Happy birthday Dad! This number is your gift this year. I am a chat bot to help out with " \
+Welcome = "Hi there! I am Todd's birthday gift created by his incredibly gifted son. I am a texting program here to " \
+          "invite you to his latest shenanigans and keep things organized for him. This program is still young" \
+          " so if you have any problems or suggestions it would be very helpful to hear them. Say yes to join :)\n\n" \
+          "If you think this might be a scam just double check with Todd Marshall that this is actually his doing"
+happyBday = "Happy birthday Dad! This number is your gift this year. I am a texting program to help out with " \
             "Mesquite and other events you want to plan. I can help coordinate who plans on going, " \
             "what time people want to go as well as any other questions you may want to know to help you plan the event " \
-            "and the coolest part, automate scoring to know who won bestball, pinkball and skins!!!"
+            "and the coolest part, automate scoring to know who won bestball, pinkball and skins!!!" \
+            " The number is a Crested Butte area code and 8633 is TODD on the phone keypad :)"
 
 @app.route('/help/<code>', methods=['GET', 'POST'])
 def helpRoute(code):
@@ -595,6 +596,11 @@ def decode(user, oMsg):
     global currentEvent, payment, people, Events, announcements, currentPoll, currentGame, safetyPlug, Schedule
     msg = oMsg.lower().strip()
     mode = people[user].mode
+
+    if 'S' in mode:
+        people[DAD].mode = 's'
+        return happyBday
+
     if len(msg) < 1:
         return FAIL
     if user == ADMIN:
@@ -622,11 +628,13 @@ def decode(user, oMsg):
     if not people[user].going:
         return ""
     if msg == "?":
-        code = getCode()
-        people[user].buffer = code
-        return ROUTE + "help/" + code
+        if 'h' in mode or 's' in mode:
+            code = getCode()
+            people[user].buffer = code
+            return ROUTE + "help/" + code
+        return help(user)
     if msg == 'back':
-        if currentEvent or 's' not in mode:
+        if currentEvent:
             return clean(user)
         currentEvent = True
         return "Typing back again will finalize the event. Make sure you're ready"
@@ -642,7 +650,7 @@ def decode(user, oMsg):
                 return "Ok"
         if 'y' == msg[0] or '2' in mode:
             if '2' in mode:
-                num = ''.join(list(filter(lambda x: x.isdigit(), msg)))
+                num = ''.join(list(filter(lambda x: x.isdigit(), msg.removeprefix('+1'))))
                 if len(num) != 10:
                     return "Phone number must be exactly 10 numbers"
                 people[user].buffer += ',+1' + num
@@ -872,9 +880,6 @@ def decode(user, oMsg):
             return "Clean slate"
         elif msg == 'status':
             return showQuestions()
-    elif 'S' in mode:
-        people[DAD].mode = 's'
-        return happyBday
     elif 'v' in mode:
         if msg == 'end':
             people[DAD].mode = 'v2'
@@ -903,39 +908,41 @@ def getNumber(name):
     return False, ""
 def help(user):
     mode = people[user].mode
-    msg = '"?" shows available commands. Commands are NOT case sensitive\n'
+    msg = '"?" shows available commands. Commands are NOT case sensitive.\n'
     if 'a' in mode:
-        msg += '\n"back" stop trying to add a number'
+        msg += '\n"back" to no longer add a number.'
     elif 'A' in mode:
-        msg += '\n"back" stop trying to make an announcement'
+        msg += '\n"back" to no longer make an announcement.'
     elif 'h' in mode:
         if payment:
             if not people[user].paid:
-                msg += '\n"pay" to request Todd to check you off for paying everything. Send image proof to him directly\n'
+                msg += '\n"pay" to request Todd to check you off for paying everything. Send image proof to him directly.\n'
             elif user == DAD:
-                msg += '\n"pay" to check someone off for paying\n'
+                msg += '\n"pay" to check someone off for paying.\n'
         msg += '\n"message" or "msg" to begin messaging to someone on the going list.'
-        msg +=' Add a name for a shortcut: "Msg todd". Type status to see name list\n'
-        msg += '\n"add" to add someone to the group. Add a name for a shortcut: "Add todd"\n'
-        msg += '\n"schedule" to see what is posted to the schedule\n'
+        msg +=' Add a name for a shortcut: "Msg todd". Type status to see name list.\n'
+        msg += '\n"add" to add someone to the group. Add a name for a shortcut: "Add todd".\n'
+        msg += '\n"schedule" to see what is posted to the schedule.\n'
         msg += '\n"status" to see people in the event'
         msg += ', current answers to all questions' if user == DAD else ''
         msg += ' and your payment status. ' if payment else '. '
         if user == DAD or user == ADMIN:
-            msg += '\n"announce" to send a message to everyone\n'
-            msg += '\n"poll" to start a poll or end one early\n'
-            msg += '\n"set schedule" to set and reset the schedule\n'
-            msg += '\n"kick" to remove a player from the event. Add a name for a shortcut: "Kick zach"\n'
-            msg += '\n"waiting" to get a list of people that have yet to vote in a poll if there is one\n'
+            msg += '\n"announce" to send a message to everyone. ' \
+                   'These will also be sent to members that arrive after you send the announcement\n'
+            msg += '\n"poll" to start a poll or end one early.'
+            msg += '\n"waiting" to get a list of people that have yet to vote in a poll if there is one.\n'
+            msg += '\n"set schedule" to set and reset the schedule. This is a place to house tee times or' \
+                   ' something of the sort. Could hold any information you want though.\n'
+            msg += '\n"kick" to remove a player from the event. Add a name for a shortcut: "Kick zach".\n'
         else:
             msg += '\n'
         msg += '\n"end" to end the event for ' + ("everyone" if user == DAD else "yourself")
     elif 'I' in mode:
-        msg += '\n"back" don\'t change the schedule page'
+        msg += '\n"back" to no longer make changes the schedule page.'
     elif 'k' in mode:
-        msg += '\n"back" stop kicking mode'
+        msg += '\n"back" stop kicking mode.'
     elif 'm' in people[user].mode:
-        msg += '\n"back" to stop messaging'
+        msg += '\n"back" to stop messaging.'
     elif 'p' in mode:
         if '1' in mode or '2' in mode:
             msg += '\n"back" to not send out this poll\n'
