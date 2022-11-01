@@ -45,7 +45,7 @@ class Person:
     def __init__(self,name,starting=True,dad=False):
         self.mode = ""
         if dad:
-            self.mode = "S"
+            self.mode = "s"
         self.buffer = ""
         self.option = 0
         self.lastScore = 0
@@ -289,11 +289,6 @@ Welcome = "Hi there! I am Todd's birthday gift created by his incredibly gifted 
           "invite you to his latest shenanigans and keep things organized for him. This program is still young" \
           " so if you have any problems or suggestions it would be very helpful to hear them. Say yes to join :)\n\n" \
           "If you think this might be a scam just double check with Todd Marshall that this is actually his doing"
-happyBday = "Happy birthday Dad! This number is your gift this year. I am a texting program to help out with " \
-            "Mesquite and other events you want to plan. I can help coordinate who plans on going, " \
-            "what time people want to go as well as any other questions you may want to know to help you plan the event " \
-            "and the coolest part, automate scoring to know who won bestball, pinkball and skins!!!" \
-            " The number is a Crested Butte area code and 8633 is TODD on the phone keypad :)"
 
 @app.route('/help/<code>', methods=['GET', 'POST'])
 def helpRoute(code):
@@ -596,10 +591,6 @@ def decode(user, oMsg):
     global currentEvent, payment, people, Events, announcements, currentPoll, currentGame, safetyPlug, Schedule
     msg = oMsg.lower().strip()
     mode = people[user].mode
-
-    if 'S' in mode:
-        people[DAD].mode = 's'
-        return happyBday
 
     if len(msg) < 1:
         return FAIL
