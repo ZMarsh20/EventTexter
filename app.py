@@ -1029,7 +1029,7 @@ def showQuestions():
 def startGame(user, msg):
     clean(user)
     if checkCourse(msg):
-        msg = "Game started. Enter game information at " + ROUTE + "score. Good luck!"
+        msg = "Game started. Enter game information at " + ROUTE + "score \nGood luck!"
         return broadcast(user, msg)
     return "Course not found"
 def startOver(user):
