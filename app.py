@@ -263,7 +263,7 @@ class Vote:
         for i in range(len(votes)):
             self.tally[i] += int(votes[i]) * val
     def getText(self):
-        return self.theme
+        return self.text
     def setText(self):
         self.theme = self.options.pop(0)
         msg = self.theme
@@ -275,27 +275,20 @@ DAD = os.getenv("DAD_NUM")
 ADMIN = os.getenv("ADMIN_NUM")
 FAIL = 'Unrecognized command. Type "?" to see command options'
 ROUTE = 'http://zmarshall.pythonanywhere.com/'
-currentEvent = False
-safetyPlug = False
-payment = False
-loaded = False
+currentEvent, safetyPlug, payment, loaded = False, False, False, False
 people = {DAD:Person('todd', False, True)}
-Events = []
-announcements = []
-currentPoll = None
-currentGame = None
+Events, announcements = [], []
+currentPoll, currentGame = None, None
 Schedule = "No schedule set yet"
-Welcome = "Hi there! I am Todd's birthday gift created by his incredibly gifted son. I am a texting program here to " \
-          "invite you to his latest shenanigans and keep things organized for him. This program is still young" \
-          " so if you have any problems or suggestions it would be very helpful to hear them. Say yes to join :)\n\n" \
-          "If you think this might be a scam just double check with Todd Marshall that this is actually his doing"
+Welcome = "Hey it's Todd here! I am Todd's birthday gift created by his incredibly gifted son. I am a texting program here to " \
+          "invite you to his latest shenanigans and keep things organized for him. This is the first run of this app" \
+          " so constructive criticism is encouraged. Say yes to join :)"
 
 @app.route('/help/<code>', methods=['GET', 'POST'])
 def helpRoute(code):
     global people
     for user,peep in people.items():
         if peep.buffer == code:
-            people[user].buffer = ""
             return help(user).replace('\n','<br>')
     return "I can't help you unfortunately. Please request a new link"
 
@@ -398,14 +391,13 @@ def signupRoute(code):
                     else:
                         questions.append(event.text)
                 return render_template("signup.html",user=user,questions=questions)
-        return  "I can't help you unfortunately. Please request a new link"
+        return "I can't help you unfortunately. Please request a new link"
 
 @app.route('/answers/<code>', methods=['GET', 'POST'])
 def statusRoute(code):
     global people
     for user,peep in people.items():
         if peep.buffer == code:
-            people[user].buffer = ""
             return answers().replace('\n','<br>')
     return "I can't help you unfortunately"
 
@@ -590,15 +582,18 @@ def clean(user):
 def decode(user, oMsg):
     global currentEvent, payment, people, Events, announcements, currentPoll, currentGame, safetyPlug, Schedule
     msg = oMsg.lower().strip()
-    mode = people[user].mode
-
-    if len(msg) < 1:
-        return FAIL
     if user == ADMIN:
         if msg == 'save':
             return save('savefile')
         elif msg == 'load':
             return load('savefile')
+    try:
+        mode = people[user].mode
+    except:
+        return "Not Invited :("
+
+    if len(msg) < 1:
+        return FAIL
     if people[user].starting:
         if 'y' == msg[0]:
             people[user].going = True
@@ -681,6 +676,7 @@ def decode(user, oMsg):
     elif 'g' in mode:
         return startGame(user, msg)
     elif 'h' in mode:
+        people[user].buffer = ""
         if "add" in msg:
             if msg == "add":
                 people[user].mode = 'a1'
@@ -868,7 +864,7 @@ def decode(user, oMsg):
             return msg
         elif msg == "end":
             restart()
-            return "Clean slate"
+            return "You now have a clean slate"
         elif msg == 'status':
             return showQuestions()
     elif 'v' in mode:
@@ -911,7 +907,7 @@ def help(user):
             elif user == DAD:
                 msg += '\n"pay" to check someone off for paying.\n'
         msg += '\n"message" or "msg" to begin messaging to someone on the going list.'
-        msg +=' Add a name for a shortcut: "Msg todd". Type status to see name list.\n'
+        msg += ' Add a name for a shortcut: "Msg todd". Type status to see name list.\n'
         msg += '\n"add" to add someone to the group. Add a name for a shortcut: "Add todd".\n'
         msg += '\n"schedule" to see what is posted to the schedule.\n'
         msg += '\n"status" to see people in the event'
@@ -1024,7 +1020,7 @@ def showQuestions():
     global Events
     msg = ""
     for event in Events:
-        msg += event.getText() + '/n'
+        msg += event.getText() + '\n'
     return msg
 def startGame(user, msg):
     clean(user)
