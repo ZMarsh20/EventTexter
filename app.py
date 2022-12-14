@@ -51,7 +51,7 @@ class Person:
         self.lastScore = 0
         self.paid = dad
         self.limitOutput = False
-        self.name = name
+        self.name = name.lower()
         self.starting = starting
         self.going = dad
         self.answers = []
@@ -263,7 +263,7 @@ class Vote:
         for i in range(len(votes)):
             self.tally[i] += int(votes[i]) * val
     def getText(self):
-        return self.text
+        return self.theme
     def setText(self):
         self.theme = self.options.pop(0)
         msg = self.theme
@@ -381,7 +381,6 @@ def signupRoute(code):
     else:
         for user,peep in people.items():
             if peep.buffer == code:
-                people[user].buffer = ""
                 questions = []
                 for event in Events:
                     if isinstance(event, Vote):
@@ -432,7 +431,7 @@ def addAll():
     return msg
 def addNum(user):
     msg = "Got it"
-    if user != DAD:
+    if user != DAD or user != ADMIN:
         send(DAD, "Please add " + people[user].buffer.title() + " - " + people[user].name.title())
         msg += ". Once Todd approves them, they will be added to the event"
     else:
@@ -489,7 +488,11 @@ def announceHistory(user):
     return ""
 def answers():
     global people
-    msg = ""
+    msg = "People wanting to go:\n"
+    for person in people:
+        if people[person].going:
+            msg += people[person].name.title() + '\n'
+    msg += '\n'
     for event in Events:
         msg += event.getText()
         if isinstance(event, Vote):
@@ -500,7 +503,7 @@ def answers():
         msg += '\n\n'
     for person in people.values():
         if person != people[DAD]:
-            msg += person.name.title() + ' is ' + ('' if person.going else 'not ') + 'going\n'
+            msg += person.name.title() + ' would ' + ('' if person.going else 'not ') + ' like to go\n'
             if payment:
                 msg += 'Has ' + ('' if person.paid else 'not ') + 'paid'
             questions = [x.getText() for x in Events]
@@ -536,6 +539,7 @@ def checkCourse(msg):
         return True
     return False
 def checkPerson(user, msg):
+    global people
     mode = people[user].mode
     for k,v in people.items():
         if msg in v.name:
@@ -548,6 +552,7 @@ def checkPerson(user, msg):
                 msg = "You want to check off " + v.name.title() + " for paying?"
             break
     else:
+        people[user].mode = 'h'
         msg = 'Didn\'t find that name in the group. "status" will show you all names in group'
     return msg
 def clean(user):
@@ -960,7 +965,7 @@ def kickStepOne(user, msg):
     for val in people.values():
         if msg == val.name:
             people[user].mode = 'k2'
-            return "Remove " + msg + '?'
+            return "Remove " + msg.title() + '?'
     else:
         clean(user)
         return "Name not in event"
@@ -1045,8 +1050,8 @@ def status(user):
     global people, Events, payment
     msg = ""
     if payment:
-        msg += "You have " + "" if people[user].paid else " NOT " + "paid\n\n"
-    msg += "Going:"
+        msg += "You have " + ("" if people[user].paid else " NOT ") + "paid\n\n"
+    msg += "Attendees:"
     for k,v in people.items():
         if people[k].going:
             msg += "\n" + v.name.title()
