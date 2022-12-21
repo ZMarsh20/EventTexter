@@ -914,7 +914,7 @@ def finalize():
     peeps = ''
     msg = "The event is now finalized so you can't join anymore. Sorry you couldn't make it."
     msg += " You'll need to text Todd directly if you want back in now"
-    for k,v in people.items():
+    for k,v in dict(people).items():
         if not v.going:
             send(k,msg)
             peeps += '\n' + v.name.title()
