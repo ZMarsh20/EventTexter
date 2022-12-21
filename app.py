@@ -632,6 +632,7 @@ def decode(user, oMsg):
         elif not people[user].rejected:
             if 'n' == msg[0]:
                 people[user].rejected = True
+                save('current')
                 return "Just reply 'y' if you change your mind"
             return "Only expecting 'yes' or 'no'"
     if not people[user].going:
@@ -694,6 +695,7 @@ def decode(user, oMsg):
             people[user].starting = True
             people[user].rejected = True
             startOver(user)
+            save('current')
             return "Just reply 'y' if you change your mind"
         clean(user)
         return 'Ok'
