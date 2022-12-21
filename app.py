@@ -276,7 +276,7 @@ ADMIN = os.getenv("ADMIN_NUM")
 FAIL = 'Unrecognized command. Type "?" to see command options'
 ROUTE = 'http://zmarshall.pythonanywhere.com/'
 currentEvent, safetyPlug, payment, loaded = False, False, False, False
-people = {DAD:Person('todd', False, True)}
+people = {DAD:Person('todd m', False, True)}
 Events, announcements = [], []
 currentPoll, currentGame = None, None
 Schedule = "No schedule set yet"
@@ -615,6 +615,9 @@ def decode(user, oMsg):
             return save('savefile')
         elif msg == 'load':
             return load('savefile')
+        elif msg == "add self" and ADMIN not in people:
+            people[ADMIN] = Person("zach")
+            return clean(user)
     if len(msg) < 1:
         return FAIL
     if people[user].starting:
@@ -812,7 +815,7 @@ def decode(user, oMsg):
         if '2' in mode:
             if 'y' == msg[0]:
                 peep = getNumber(people[user].buffer)[1]
-                send(peep, "You have been removed from the group :(")
+                send(peep, "You have been removed from the group. Text Todd directly if you want back in")
                 startOver(peep)
                 del people[peep]
                 clean(user)
@@ -909,8 +912,8 @@ def decode(user, oMsg):
 def finalize():
     global people
     peeps = ''
-    msg = "The event is now finalized so you can't join anymore. Sorry you couldn't make it. "
-    msg += "Maybe next time. You'll need to text Todd directly if you want back in"
+    msg = "The event is now finalized so you can't join anymore. Sorry you couldn't make it."
+    msg += " You'll need to text Todd directly if you want back in now"
     for k,v in people.items():
         if not v.going:
             send(k,msg)
@@ -943,6 +946,8 @@ def help(user):
     elif 'A' in mode:
         msg += '\n"back" to no longer make an announcement.'
     elif 'h' in mode:
+        if currentGame:
+            msg += '\n"link" to get a new link to enter scores.\n'
         if payment:
             if not people[user].paid:
                 msg += '\n"pay" to request Todd to check you off for paying everything. Send image proof to him directly.\n'
@@ -963,6 +968,14 @@ def help(user):
             msg += '\n"set schedule" to set and reset the schedule. This is a place to house tee times or' \
                    ' something of the sort. Could hold any information you want though.\n'
             msg += '\n"kick" to remove a player from the event. Add a name for a shortcut: "Kick zach".\n'
+            msg += '\n"finalize" will kick all the people that are not planning on going to the event\n'
+            if currentGame:
+                msg += '\n"teams <teams>" to make the teams. Must either be manually entered: Teams zach,todd;dana,jim\n'
+                msg += '(Notice how each team is separated by a ";" and each player is separated by ",")\n'
+                msg += 'Or, if there\'s at least 6 players: Teams random\n'
+                msg += 'Teams can be recreated each time if needed\n'
+            else:
+                msg += '\n"play" to start playing a golf course. Add the name for a shortcut: "Play Dos Rios"\n'
         else:
             msg += '\n'
         msg += '\n"end" to end the event for ' + ("everyone" if user == DAD else "yourself")
@@ -1013,7 +1026,7 @@ def load(s):
             data = jsonpickle.decode(f.readline())
         currentEvent = data[0]
         payment = data[1]
-        people = data[2]
+        people = dict(sorted(data[2].items(),key=lambda x: x[1].name))
         Events = data[3]
         announcements = data[4]
         return "Loaded"
@@ -1082,6 +1095,7 @@ def startOver(user):
             Events[i].addTally(answers[i], True)
     people[user].option = 0
     people[user].answers = []
+    save("current")
     return
 def status(user):
     global people, Events, payment
