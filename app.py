@@ -445,8 +445,8 @@ def addNum(user):
             msg = "They are already signed up for the event"
     clean(user)
     return msg
-def addItinerary():
-    people[DAD].mode = 'I1'
+def addItinerary(user):
+    people[user].mode = 'I1'
     return "What should be the itinerary?"
 def addQuestion():
     people[DAD].mode = 'q1'
@@ -733,8 +733,8 @@ def decode(user, oMsg):
         elif "schedule" in msg:
             if msg == "schedule":
                 return Schedule
-            elif user == DAD and msg == "set schedule":
-                return addItinerary()
+            elif (user == DAD or user == ADMIN) and msg == "set schedule":
+                return addItinerary(user)
         elif msg == "status":
             if user == DAD or user == ADMIN:
                 code = getCode()
@@ -799,15 +799,15 @@ def decode(user, oMsg):
                 return msg
     elif 'I' in mode:
         if '1' in mode:
-            people[DAD].mode = 'I2'
-            people[DAD].buffer = oMsg
+            people[user].mode = 'I2'
+            people[user].buffer = oMsg
             return "This is what will be seen:\n " + oMsg
         if 'y' == msg[0]:
-            Schedule = people[DAD].buffer
-            clean(DAD)
+            Schedule = people[user].buffer
+            clean(user)
             return "Itinerary set"
         elif 'n' == msg[0]:
-            return addItinerary()
+            return addItinerary(user)
         return "Only expecting 'yes' or 'no'"
     elif 'k' in mode:
         if '1' in mode:
@@ -1020,7 +1020,7 @@ def kickStepOne(user, msg):
         clean(user)
         return "Name not in event"
 def load(s):
-    global currentEvent, payment, people, Events, announcements
+    global currentEvent, payment, people, Events, announcements, Schedule
     try:
         with open(s + ".txt", 'r') as f:
             data = jsonpickle.decode(f.readline())
@@ -1029,6 +1029,7 @@ def load(s):
         people = dict(sorted(data[2].items(),key=lambda x: x[1].name))
         Events = data[3]
         announcements = data[4]
+        Schedule = data[5]
         return "Loaded"
     except:
         return "Failed to load"
@@ -1061,8 +1062,8 @@ def restart():
     currentPoll = None
     currentGame = None
 def save(s):
-    global currentEvent, payment, people, Events, announcements
-    data = [currentEvent, payment, people, Events, announcements]
+    global currentEvent, payment, people, Events, announcements, Schedule
+    data = [currentEvent, payment, people, Events, announcements, Schedule]
     with open(s + ".txt", 'w') as f:
         f.write(jsonpickle.encode(data))
     return "Saved"
