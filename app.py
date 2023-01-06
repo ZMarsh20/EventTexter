@@ -275,7 +275,7 @@ DAD = os.getenv("DAD_NUM")
 ADMIN = os.getenv("ADMIN_NUM")
 FAIL = 'Unrecognized command. Type "?" to see command options'
 ROUTE = 'http://zmarshall.pythonanywhere.com/'
-currentEvent, safetyPlug, payment, loaded = False, False, False, False
+currentEvent, safetyPlug, payment, loaded, finalized = False, False, False, False, False
 people = {DAD:Person('todd m', False, True)}
 Events, announcements = [], []
 currentPoll, currentGame = None, None
@@ -624,7 +624,7 @@ def decode(user, oMsg):
         if 'y' == msg[0]:
             people[user].going = True
             people[user].starting = False
-            if Events:
+            if Events and not finalized:
                 people[user].mode = 'r'
                 code = getCode()
                 people[user].buffer = code
@@ -1020,7 +1020,7 @@ def kickStepOne(user, msg):
         clean(user)
         return "Name not in event"
 def load(s):
-    global currentEvent, payment, people, Events, announcements, Schedule
+    global currentEvent, payment, people, Events, announcements, Schedule, finalized
     try:
         with open(s + ".txt", 'r') as f:
             data = jsonpickle.decode(f.readline())
@@ -1030,6 +1030,7 @@ def load(s):
         Events = data[3]
         announcements = data[4]
         Schedule = data[5]
+        finalized = data[6]
         return "Loaded"
     except:
         return "Failed to load"
@@ -1062,8 +1063,8 @@ def restart():
     currentPoll = None
     currentGame = None
 def save(s):
-    global currentEvent, payment, people, Events, announcements, Schedule
-    data = [currentEvent, payment, people, Events, announcements, Schedule]
+    global currentEvent, payment, people, Events, announcements, Schedule, finalized
+    data = [currentEvent, payment, people, Events, announcements, Schedule, finalized]
     with open(s + ".txt", 'w') as f:
         f.write(jsonpickle.encode(data))
     return "Saved"
