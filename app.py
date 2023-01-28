@@ -116,6 +116,7 @@ class Game:
             self.handicaps.append([int(x) for x in (self.handicaps.pop(0)).split(',')])
         self.scores = {}
         self.teams = []
+        self.holeCount = len(self.pars)
     def broadcast(self):
         msg = "Here are the teams: \n"
         for team in self.teams:
@@ -126,11 +127,11 @@ class Game:
         if self.teams:
             for team in self.teams:
                 bestball = []
-                for i in range(18):
+                for i in range(currentGame.holeCount):
                     bestball.append(min([self.scores[x][i] for x in team]))
                 msg += ','.join([x.title() for x in team]) + ': ' + str(int(sum(bestball))) + '\n'
         bestball = []
-        for i in range(18):
+        for i in range(currentGame.holeCount):
             bestball.append(min([x[i] for x in self.scores.values()]))
         msg += "Everyone: " + str(sum(bestball)) + '\n\n'
         return msg
@@ -140,7 +141,7 @@ class Game:
             msg += "Pink Ball:\n"
             for team in self.teams:
                 pinkball = []
-                for i in range(18):
+                for i in range(currentGame.holeCount):
                     score = self.scores[team[(i%len(team))]][i]
                     pinkball.append(score)
                 msg += ','.join([x.title() for x in team]) + ': ' + str(int(sum(pinkball))) + '\n'
@@ -208,7 +209,7 @@ class Game:
             return ret + val[i]
         msg = 'Skins:'
         skinCount = {}
-        for i in range(18):
+        for i in range(currentGame.holeCount):
             name = ""
             val = 10
             cancel = False
@@ -277,6 +278,7 @@ FAIL = 'Unrecognized command. Type "?" to see command options'
 ROUTE = 'http://zmarshall.pythonanywhere.com/'
 currentEvent, safetyPlug, payment, loaded, finalized = False, False, False, False, False
 people = {DAD:Person('todd m', False, True)}
+newCourse = {'n':'', 't':[], 'p':[], 'h':[], 's':[], 'r':[]}
 Events, announcements = [], []
 currentPoll, currentGame = None, None
 Schedule = "No schedule set yet"
@@ -301,7 +303,7 @@ def score():
         handicap = float(request.form['handicap'])
         tee = request.form['tees']
         holes = []
-        for i in range(18):
+        for i in range(currentGame.holeCount):
             holes.append(int(request.form[('hole' + str(i))]))
         if getNumber(name)[0]:
             if dataEntered(handicap,holes,tee,name):
@@ -328,11 +330,12 @@ def score():
                            nameFail=False)
 def dataEntered(handicap,holes,tees,name):
     global currentGame, safetyPlug
+    holeCount = currentGame.holeCount
     net = []
     i = currentGame.selectHandicaps(tees)
-    additive = handicap // 18
-    extra = handicap % 18
-    for hole in range(18):
+    additive = handicap // holeCount
+    extra = handicap % holeCount
+    for hole in range(holeCount):
         netScore = holes[hole] - additive - (extra >= currentGame.handicaps[i][hole])
         if currentGame.pars[hole] + 2 < netScore:
             netScore = currentGame.pars[hole] + 2
@@ -351,6 +354,8 @@ def courseHandicap(handicap,tees):
         plus = True
         handicap = -handicap
     val = round((handicap * currentGame.slopes[i])/113 + currentGame.rating[i] - sum(currentGame.pars))
+    if currentGame.holeCount is 9:
+        val /= 2
     return -val if plus else val
 @app.route('/signup/<code>', methods=['GET', 'POST'])
 def signupRoute(code):
@@ -426,6 +431,34 @@ def addAll():
             people[peep.number] = Person(peep.name)
             send(peep.number, Welcome)
     return msg
+def addCourse():
+    global newCourse, safetyPlug
+    if checkCourse(newCourse['n']):
+        return "Name already in database"
+    if max(newCourse['p']) > 5 + safetyPlug or min(newCourse['p']) < 3:
+        return "Pars don't make sense"
+    handicaps = []
+    for i in range(len(newCourse['h'])):
+        handicaps.append(",".join([str(x) for x in newCourse['h'][i]]))
+        if newCourse['h'][i] != [0] and (max(newCourse['h'][i]) > 18 or min(newCourse['h'][i]) < 1):
+            return "Handicaps don't make sense"
+    if max(newCourse['r']) > 90 or min(newCourse['r']) < 50:
+        return "Ratings don't make sense"
+    if max(newCourse['s']) > 155 or min(newCourse['s']) < 55:
+        return "Slopes don't make sense"
+    if not len(newCourse['t']) == len(newCourse['s']) == len(newCourse['r']) == len(newCourse['h']):
+        return "All entries should have same length"
+    if len(newCourse['p']) != len(newCourse['h'][i]):
+        return "handicaps and pars don't match"
+    course = Courses(name=newCourse['n'],
+                     tees=",".join(newCourse['t']),
+                     slopes=",".join([str(x) for x in newCourse['s']]),
+                     ratings=",".join([str(x) for x in newCourse['r']]),
+                     pars=",".join([str(x) for x in newCourse['p']]),
+                     handicaps=";".join(handicaps))
+    db.session.add(course)
+    db.session.commit()
+    return "Course successfully added"
 def addNum(user):
     msg = "Got it"
     if user != DAD and user != ADMIN:
@@ -600,7 +633,7 @@ def clean(user):
     save('current')
     return 'Ok'
 def decode(user, oMsg):
-    global currentEvent, payment, people, Events, announcements, currentPoll, currentGame, safetyPlug, Schedule
+    global currentEvent, payment, people, Events, announcements, currentPoll, currentGame, safetyPlug, Schedule, newCourse
     msg = oMsg.lower().strip()
     try:
         mode = people[user].mode
@@ -755,6 +788,10 @@ def decode(user, oMsg):
                     return kickStepOne(user, name)
                 except:
                     return FAIL
+            elif msg == 'new course':
+                people[user].mode = 'n1'
+                msg = "What is the name of the course?"
+                return msg
             elif "play" in msg:
                 if msg == 'play':
                     people[user].mode = 'g'
@@ -829,6 +866,51 @@ def decode(user, oMsg):
         send(people[user].buffer, (people[user].name.title() + " says:\n" + msg))
         clean(user)
         return "Message sent"
+    elif 'n' in mode:
+        if '1' in mode:
+            newCourse['n'] = msg
+            people[user].mode = 'n2'
+            return newCourse['n'] + " will be the name. What are the tee options?"
+        elif '2' in mode:
+            try:
+                newCourse['t'] = [x.strip().lower() for x in msg.split(',')]
+            except:
+                return "Text must be comma separated"
+            people[user].mode = 'n3'
+            return " ".join(newCourse['t']) + " will be the tees. What are the tee respective slopes?"
+        elif '3' in mode:
+            try:
+                newCourse['s'] = [int(x.strip().lower()) for x in msg.split(',')]
+            except:
+                return "Text must be comma separated numbers"
+            people[user].mode = 'n4'
+            return " ".join([str(x) for x in newCourse['s']]) + " will be the slopes. What are the tee respective ratings?"
+        elif '4' in mode:
+            try:
+                newCourse['r'] = [float(x.strip().lower()) for x in msg.split(',')]
+            except:
+                return "Text must be comma separated numbers"
+            people[user].mode = 'n5'
+            return " ".join([str(x) for x in newCourse['r']]) + " will be the ratings. What are the tee respective hole handicaps?"
+        elif '5' in mode:
+            try:
+                newCourse['h'] = [[int(x.strip().lower()) for x in holes.split(',')] for holes in msg.split(';')]
+            except:
+                return "Text must be comma separated holes and semi-colon separated sets"
+            people[user].mode = 'n6'
+            return msg.replace(';',' ') + " will be the hole handicaps. What are the tee respective pars?"
+        elif '6' in mode:
+            try:
+                newCourse['p'] = [int(x.strip().lower()) for x in msg.split(',')]
+            except:
+                return "Text must be comma separated numbers"
+            people[user].mode = 'n7'
+            return " ".join([str(x) for x in newCourse['p']]) + " will be the pars. Are the course specs correct?"
+        elif '7' in mode:
+            if 'y' == msg[0]:
+                return addCourse()
+            else:
+                return 'Either send "yes" to confirm or "back" to quit out and try again'
     elif 'p' in mode:
         if currentPoll is None:
             people[user].mode = 'h'
@@ -852,7 +934,7 @@ def decode(user, oMsg):
         return 'Not valid. "?" for help'
     elif 'P' in mode:
         present, num = getNumber(msg)
-        people[DAD].mode = 'h'
+        clean(DAD)
         if present:
             people[num].paid = not people[num].paid
             return msg.title() + " has been marked as " + ("" if people[num].paid else "not") + "paid"
@@ -983,8 +1065,10 @@ def help(user):
         msg += '\n"back" to no longer make changes the schedule page.'
     elif 'k' in mode:
         msg += '\n"back" stop kicking mode.'
-    elif 'm' in people[user].mode:
+    elif 'm' in mode:
         msg += '\n"back" to stop messaging.'
+    elif 'n' in mode:
+        msg += '\n"back" to stop adding course.'
     elif 'p' in mode:
         if '1' in mode or '2' in mode:
             msg += '\n"back" to not send out this poll\n'
@@ -1121,6 +1205,7 @@ if __name__ == '__main__':
 # h = home
 # I = itinerary
 # m = message
+# n = new course adding
 # p = poll mode
 # pi = poll initiate
 # P = pay mode
