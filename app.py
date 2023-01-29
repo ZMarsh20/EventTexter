@@ -300,8 +300,8 @@ def score():
         return "Sorry. It seems there is no game active :("
     if request.method == 'POST':
         name = request.form['name'].lower().strip()
-        handicap = float(request.form['handicap'])
         tee = request.form['tees']
+        handicap = courseHandicap(float(request.form['handicap']),tee)
         holes = []
         for i in range(currentGame.holeCount):
             holes.append(int(request.form[('hole' + str(i))]))
@@ -343,7 +343,7 @@ def dataEntered(handicap,holes,tees,name):
     currentGame.scores[name] = net
     differential = sum(net) - sum(currentGame.pars)
     if -10 < differential or safetyPlug:
-        people[getNumber(name)[1]].lastScore = int(sum(net)) + courseHandicap(handicap,tees)
+        people[getNumber(name)[1]].lastScore = int(sum(net)) + handicap
         return True
     return False
 def courseHandicap(handicap,tees):
@@ -354,7 +354,7 @@ def courseHandicap(handicap,tees):
         plus = True
         handicap = -handicap
     val = round((handicap * currentGame.slopes[i])/113 + currentGame.rating[i] - sum(currentGame.pars))
-    if currentGame.holeCount is 9:
+    if currentGame.holeCount == 9:
         val /= 2
     return -val if plus else val
 @app.route('/signup/<code>', methods=['GET', 'POST'])
@@ -908,6 +908,7 @@ def decode(user, oMsg):
             return " ".join([str(x) for x in newCourse['p']]) + " will be the pars. Are the course specs correct?"
         elif '7' in mode:
             if 'y' == msg[0]:
+                clean(user)
                 return addCourse()
             else:
                 return 'Either send "yes" to confirm or "back" to quit out and try again'
