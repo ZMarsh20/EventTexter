@@ -6,7 +6,7 @@
 </head>
 <body style="text-align: center">
     <h1>{{courseName}}</h1>
-    <form id="scoreForm" action="/" method="POST">
+    <form id="scoreForm" action="/score" method="POST">
         <label for="name">Enter your name:</label><br>
         <input type="text" id="name" name="name" required>
         {% if nameFail %}
