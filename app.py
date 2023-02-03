@@ -117,6 +117,7 @@ class Game:
         self.scores = {}
         self.teams = []
         self.holeCount = len(self.pars)
+        self.notPlaying = []
     def broadcast(self):
         msg = "Here are the teams: \n"
         for team in self.teams:
@@ -155,15 +156,10 @@ class Game:
     def setTeams(self,msg):
         global people
         self.teams = []
-        if msg[:6] == 'random':
-            temp, exempt = [], []
-            if 'random -' in msg:
-                try:
-                    exempt = msg[8:].split(',')
-                except:
-                    return False
+        if msg == 'random':
+            temp = []
             for v in people.values():
-                if v.name not in exempt:
+                if v.name not in self.notPlaying:
                     temp.append(v.name)
             if len(temp) < 6:
                 return False
@@ -311,11 +307,11 @@ def score():
         holes = []
         for i in range(currentGame.holeCount):
             holes.append(int(request.form[('hole' + str(i))]))
-        if getNumber(name)[0]:
+        if getNumber(name)[0] and name not in currentGame.notPlaying:
             if dataEntered(handicap,holes,tee,name):
                 msg = "Success :). Thanks " + name.title() + ". Your total today was "
                 msg += str(people[getNumber(name)[1]].lastScore) + " and Net " + str(int(sum(currentGame.scores[name])))
-                if len(currentGame.scores) == peopleGoing():
+                if (currentGame.scores) == peopleGoing():
                     broadcast(None, currentGame.standings())
                     currentGame = None
                 return msg
@@ -785,6 +781,15 @@ def decode(user, oMsg):
         elif (user == DAD or user == ADMIN) and currentEvent:
             if msg == "announce":
                 return announce(user)
+            elif currentGame and "minus" in msg:
+                try:
+                    for name in msg.split()[1].split(','):
+                        if not getNumber(name)[0]:
+                            return name.title() + " not found"
+                    currentGame.notPlaying.extends(msg.split()[1].split(','))
+                    return "Removed " + " ".join(msg.split()[1].split(','))
+                except:
+                    return FAIL
             elif msg == 'finalize':
                 return finalize()
             elif "kick" in msg:
@@ -802,6 +807,9 @@ def decode(user, oMsg):
                 return msg
             elif "play" in msg:
                 if msg == 'play':
+                    if currentGame:
+                        broadcast(user, "Game ended")
+                        currentGame = None
                     people[user].mode = 'g'
                     return "What course?"
                 try:
@@ -1066,6 +1074,7 @@ def help(user):
                 msg += '(Notice how each team is separated by a ";" and each player is separated by ",")\n'
                 msg += 'Or, if there\'s at least 6 players: Teams random\n'
                 msg += 'Teams can be recreated each time if needed\n'
+                msg += '"minus" to have a list of players that you aren\'t expecting to receive a score from: Minus zach\n'
             else:
                 msg += '\n"play" to start playing a golf course. Add the name for a shortcut: "Play Dos Rios"\n'
         else:
