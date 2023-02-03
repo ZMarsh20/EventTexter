@@ -155,10 +155,16 @@ class Game:
     def setTeams(self,msg):
         global people
         self.teams = []
-        if msg == 'random':
-            temp = []
+        if msg[:6] == 'random':
+            temp, exempt = [], []
+            if 'random -' in msg:
+                try:
+                    exempt = msg[8:].split(',')
+                except:
+                    return False
             for v in people.values():
-                temp.append(v.name)
+                if v.name not in exempt:
+                    temp.append(v.name)
             if len(temp) < 6:
                 return False
             random.shuffle(temp)
@@ -520,11 +526,11 @@ def answers():
     global people
     msg = 'People going:\n'
     for person in people.values():
-        if person.answers or person == people[DAD]:
+        if person.answers or (person.going and finalized) or person == people[DAD]:
             msg += person.name.title() + '\n'
     msg += "\nPeople interested:\n"
     for person in people.values():
-        if person.going and not person.answers and person != people[DAD]:
+        if person.going and not (person.answers or finalized) and person != people[DAD]:
             msg += person.name.title() + '\n'
     msg += '\nPeople unresponsive:\n'
     for person in people.values():
@@ -725,6 +731,8 @@ def decode(user, oMsg):
                 if '1' in mode:
                     people[user].mode = 'e2'
                     return "Double checking again because everything will be gone"
+                msg = "The event has been ended. Thank you for participating!"
+                broadcast(user,msg)
                 restart()
                 return "Ok then. Deleting..."
             people[user].going = False
@@ -750,7 +758,7 @@ def decode(user, oMsg):
                 return FAIL
         elif msg == "end":
             people[user].mode = 'e1'
-            return "Are you sure you want to" + (" end " if user == DAD else " leave ") + "this event??"
+            return "Are you sure you want to" + (" end " if (user == DAD or user == ADMIN) else " leave ") + "this event??"
         elif "message" in msg or "msg" in msg:
             people[user].mode = 'm1'
             if msg == 'message' or msg == 'msg':
@@ -853,7 +861,8 @@ def decode(user, oMsg):
             if 'y' == msg[0]:
                 peep = getNumber(people[user].buffer)[1]
                 send(peep, "You have been removed from the group. Text Todd directly if you want back in")
-                startOver(peep)
+                if not finalized:
+                    startOver(peep)
                 del people[peep]
                 clean(user)
                 return "Removed them from the event"
@@ -1147,6 +1156,7 @@ def restart():
     announcements = []
     currentPoll = None
     currentGame = None
+    save("current")
 def save(s):
     global currentEvent, payment, people, Events, announcements, Schedule, finalized
     data = [currentEvent, payment, people, Events, announcements, Schedule, finalized]
