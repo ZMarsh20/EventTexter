@@ -264,9 +264,7 @@ newCourse = {'n':'', 't':[], 'p':[], 'h':[], 's':[], 'r':[]}
 Events, announcements = [], []
 currentPoll, currentGame = None, None
 Schedule = "No schedule set yet"
-Welcome = "Hey it's Todd here! I am Todd's birthday gift created by his incredibly gifted son. I am a texting program here to " \
-          "invite you to his latest shenanigans and keep things organized for him. This is the first run of this app" \
-          " so constructive criticism is encouraged. Say yes to join :)"
+Welcome = "Send 'y' if interested in joining Todd's trip"
 
 @app.route('/help/<code>', methods=['GET', 'POST'])
 def helpRoute(code):
@@ -455,6 +453,14 @@ def addNum(user):
 def addItinerary(user):
     people[user].mode = 'I1'
     return "What should be the itinerary?"
+def addList(peepList):
+    peeps = Contacts.query.all()
+    for peep in peeps:
+        if peep in peepList:
+            send(ADMIN, peep.name)
+            #people[peep.number] = Person(peep.name)
+            #send(peep.number, Welcome)
+    return "Added"
 def addQuestion():
     people[DAD].mode = 'q1'
     return "Type now your yes or no question"
@@ -466,7 +472,11 @@ def addStepOne(user, msg):
         return "No commas allowed in name. Try again"
     if user == DAD and msg == "all":
         people[DAD].mode = 'a4'
-        return "Add everyone that's in the database?"
+        return "Add everyone that's in the database?\n" + listUsers()
+    if user in [DAD,ADMIN] and msg == "list":
+        people[DAD].mode = 'a5'
+        people[DAD].buffer = listUsers()
+        return listUsers()
     people[user].buffer = msg
     if Contacts.query.filter_by(name=msg).first() is None:
         people[user].mode = 'a2'
@@ -598,7 +608,8 @@ def clean(user):
     save('current')
     return 'Ok'
 def decode(user, oMsg):
-    global currentEvent, payment, people, Events, announcements, currentPoll, currentGame, safetyPlug, Schedule, newCourse
+    global currentEvent, payment, people, Events, announcements, \
+        currentPoll, currentGame, safetyPlug, Schedule, newCourse, Welcome
     msg = oMsg.lower().strip()
     try: mode = people[user].mode
     except:
@@ -629,7 +640,7 @@ def decode(user, oMsg):
                 people[user].rejected = True
                 save('current')
                 return "Just reply 'y' if you change your mind"
-            return "Only expecting 'yes' or 'no'"
+            return "Only expecting 'y' or 'n'"
     if not people[user].going: return ""
     if msg == "?":
         if 'h' in mode or 's' in mode:
@@ -643,13 +654,23 @@ def decode(user, oMsg):
         return "Typing back again will finalize the event. Make sure you're ready"
     if 'a' in mode:
         if '1' in mode: return addStepOne(user, msg)
-        elif '4' in mode:
+        elif '4' in mode or '6' in mode:
             if 'y' == msg[0]:
-                clean(DAD)
-                return addAll()
-            elif 'n' == msg[0]:
-                clean(DAD)
-                return "Ok"
+                clean(user)
+                if '4' in mode: return addAll()
+                else: addList(people[user].buffer)
+            elif 'n' == msg[0]: return clean(user)
+        elif '5' in mode:
+            temp = user.buffer.split('\n')
+            people[user].buffer = filter(lambda x: listCheck(x.split('.')[0],msg), temp)
+            people[user].mode = 'm6'
+            if people[user].buffer:
+                msg = "Add these people?\n"
+                for person in people[user].buffer:
+                    msg += '\n' + person
+                return msg
+            clean(user)
+            return "Bad input"
         if 'y' == msg[0] or '2' in mode:
             if '2' in mode:
                 num = ''.join(list(filter(lambda x: x.isdigit(), msg.removeprefix('+1'))))
@@ -660,7 +681,7 @@ def decode(user, oMsg):
         elif 'n' == msg[0]:
             clean(user)
             return "Maybe add last name and try again"
-        return "Only expecting 'yes' or 'no'"
+        return "Only expecting 'y' or 'n'"
     elif 'A' in mode:
         if '1' in mode:
             people[user].buffer = "Announcement: " + oMsg
@@ -671,7 +692,7 @@ def decode(user, oMsg):
             clean(user)
             return "Messages Sent"
         elif 'n' == msg[0]: return announce(user)
-        return "Only expecting 'yes' or 'no'"
+        return "Only expecting 'y' or 'n'"
     elif 'e' in mode:
         if 'y' in msg:
             if user == DAD or user == ADMIN:
@@ -799,7 +820,7 @@ def decode(user, oMsg):
             clean(user)
             return "Itinerary set"
         elif 'n' == msg[0]: return addItinerary(user)
-        return "Only expecting 'yes' or 'no'"
+        return "Only expecting 'y' or 'n'"
     elif 'k' in mode:
         if '1' in mode: return kickStepOne(user, msg)
         if '2' in mode:
@@ -812,7 +833,7 @@ def decode(user, oMsg):
                 clean(user)
                 return "Removed them from the event"
             elif 'n' == msg[0]: return clean(user)
-            return "Only expecting 'yes' or 'no'"
+            return "Only expecting 'y' or 'n'"
     elif 'm' in mode:
         if '1' in mode: return checkPerson(user, msg)
         send(people[user].buffer, (people[user].name.title() + " says:\n" + msg))
@@ -892,7 +913,7 @@ def decode(user, oMsg):
             clean(DAD)
             return "Question now in sign up"
         elif 'n' == msg[0]: return addQuestion()
-        return "Only expecting 'yes' or 'no'"
+        return "Only expecting 'y' or 'n'"
     elif 'r' in mode:
         if msg == "end":
             clean(user)
@@ -920,7 +941,10 @@ def decode(user, oMsg):
         elif msg == "end":
             restart()
             return "You now have a clean slate"
-        elif msg == 'status': return showQuestions()
+        elif msg == "status": return showQuestions()
+        elif msg == "welcome":
+            people[DAD].mode = 'w'
+            return 'What do you want the welcome message to be?'
     elif 'v' in mode:
         if msg == 'end':
             people[DAD].mode = 'v2'
@@ -930,6 +954,9 @@ def decode(user, oMsg):
         Events[-1].options.append(oMsg)
         Events[-1].tally.append(0)
         return addVote(i+1)
+    elif 'w' in mode:
+        Welcome = oMsg
+        return 'set welcome message'
     return FAIL
 def finalize():
     global people
@@ -959,7 +986,8 @@ def getNumber(name):
 def help(user):
     mode = people[user].mode
     msg = '"?" shows available commands. Commands are NOT case sensitive.\n'
-    if 'a' in mode: msg += '\n"back" to no longer add a number.'
+    if 'a' in mode:
+        msg += '\n"back" to no longer add a number.'
     elif 'A' in mode: msg += '\n"back" to no longer make an announcement.'
     elif 'h' in mode:
         if currentGame: msg += '\n"link" to get a new link to enter scores.\n'
@@ -976,6 +1004,8 @@ def help(user):
         msg += ', current answers to all questions' if user == DAD else ''
         msg += ' and your payment status. ' if payment else '. '
         if user == DAD or user == ADMIN:
+            msg += '\n"add all" to add all numbers in database.\n'
+            msg += '\n"add list" to add selections of numbers from database.\n'
             msg += '\n"announce" to send a message to everyone. ' \
                    'These will also be sent to members that arrive after you send the announcement\n'
             msg += '\n"poll" to start a poll or end one early.'
@@ -1016,6 +1046,7 @@ def help(user):
         msg += '\n"vote" to add a vote when signing up\n'
         msg += '\n"pay" change whether or not you are expecting payment from everyone\n'
         msg += '\n"status" to see what questions have been added to the event so far\n'
+        msg += '\n"welcome" to update the welcoming message that invites people to your trip\n'
         msg += '\n"back" to end sign up and start adding people\n'
         msg += '\n"end" to restart the questionnaire'
     return msg
@@ -1029,8 +1060,25 @@ def kickStepOne(user, msg):
     else:
         clean(user)
         return "Name not in event"
+def listCheck(num,testSet):
+    try:
+        for selection in [x.strip() for x in testSet.split(',')]:
+            if ('-' in selection and int(selection.split('-')[0]) <= int(num) <= int(selection.split('-')[-1])) \
+                    or num == selection: return True
+    except: pass
+    return False
+def listUsers():
+    global people
+    peeps = Contacts.query.all()
+    msg = "Not yet invited:"
+    i = 0
+    for peep in peeps:
+        if peep.number not in people:
+            i += 1
+            msg += '\n' + str(i) + '. ' + peep.name.title()
+    return msg
 def load(s):
-    global currentEvent, payment, people, Events, announcements, Schedule, finalized
+    global currentEvent, payment, people, Events, announcements, Schedule, finalized, Welcome
     try:
         with open(s + ".txt", 'r') as f: data = jsonpickle.decode(f.readline())
         currentEvent = data[0]
@@ -1040,6 +1088,7 @@ def load(s):
         announcements = data[4]
         Schedule = data[5]
         finalized = data[6]
+        Welcome = data[7]
         return "Loaded"
     except: return "Failed to load"
 def pay(user):
@@ -1060,7 +1109,8 @@ def poll(user, i):
     if i > 0: return "Type now option " + str(i)
     return "What should the poll be about?"
 def restart():
-    global currentEvent, payment, people, Events, announcements, currentPoll, currentGame
+    global currentEvent, payment, people, Events, announcements, currentPoll, currentGame, Welcome
+    Welcome = "Send 'y' if interested in joining Todd's trip"
     currentEvent = False
     payment = False
     people = {DAD : Person('Todd', False, True)}
@@ -1070,16 +1120,16 @@ def restart():
     currentGame = None
     save("current")
 def save(s):
-    global currentEvent, payment, people, Events, announcements, Schedule, finalized
-    data = [currentEvent, payment, people, Events, announcements, Schedule, finalized]
+    global currentEvent, payment, people, Events, announcements, Schedule, finalized, Welcome
+    data = [currentEvent, payment, people, Events, announcements, Schedule, finalized, Welcome]
     with open(s + ".txt", 'w') as f: f.write(jsonpickle.encode(data))
     return "Saved"
 def send(user, msg):
     try: return twilio_api.messages.create(body=msg, from_=TWILIO_NUM, to=user)
     except: return False
 def showQuestions():
-    global Events
-    msg = ""
+    global Events, Welcome
+    msg = Welcome + '\n'
     for event in Events: msg += event.getText() + '\n'
     return msg
 def startGame(user, msg):
