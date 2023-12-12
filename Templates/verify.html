@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+</head>
+<body style="text-align: center">
+    <p>An email was sent to {{user|title}}</p>
+    <style>
+        @media only screen and (max-device-width: 767px) { [data-type="control_dropdown"] .form-input,
+         [data-type="control_dropdown"] .form-input-wide { width: 100% !important; }}
+    </style>
+    <form action="/terminal" method="post">
+        <input name="code" type="number" step="1" min="0" max="9999999" required>
+        <input type="submit">
+    </form><br>
+    <p>Reloading the page will send another code</p>
+</body>
+</html>

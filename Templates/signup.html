@@ -6,11 +6,12 @@
 </head>
 <body style="text-align: center">
     <h1>Sign Up Sheet</h1>
-    <p>This form has either yes/no questions or ranked voting questions</p>
+    <p>This form has either yes/no questions or ranked voting questions<br>Ticked = Yes<br>5 = "I really like this option"</p>
     <style>
         @media only screen and (max-device-width: 767px) { [data-type="control_dropdown"] .form-input,
          [data-type="control_dropdown"] .form-input-wide { width: 100% !important; }}
     </style>
+    <br>
     <form action="/signup/0" method="post">
         {% for question in questions %}
         {% if question is not string %}
@@ -18,19 +19,17 @@
             {% for option in question %}
                 {% if loop.index > 1 %}
                     <label for="{{count}}">{{option}}</label>
-                    <br><select id="{{count}}" name="{{count}}[{{loop.index-2}}]">
+                    <select id="{{count}}" name="{{count}}[{{loop.index-2}}]">
                         {% for i in range(6) %}
                         <option value="{{i}}">{{i}}</option>
                         {%endfor%}
                     </select><br>
                 {% else %}
-                    <br><h4>{{option}}</h4>
-                    <p>(star rating)</p>
+                    <br><h4 style="margin:5px">{{option}}</h4>
                 {%endif%}
             {%endfor%}
         {% else %}
-            <br><h4>{{question}}</h4>
-            <input type="checkbox" name="{{loop.index}}"> (Ticked = Yes)<br>
+            <br><h4 style="margin:5px">{{question}} <input type="checkbox" name="{{loop.index}}"></h4>
         {%endif%}
         <br>
         {%endfor%}

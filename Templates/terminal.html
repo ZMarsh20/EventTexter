@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+</head>
+<body style="text-align: center">
+    <p>Hi {{user|title}}</p>
+    {%for message in newMessage%}
+        <p> {{message}} </p>
+    {%endfor%}
+    <style>
+        @media only screen and (max-device-width: 767px) { [data-type="control_dropdown"] .form-input,
+         [data-type="control_dropdown"] .form-input-wide { width: 100% !important; }}
+    </style>
+    <form action="/terminal" method="post">
+        {% if box %}
+        <textarea name="msg" row="20" cols="50" autofocus required
+        hint="Below are you possible commands at this stage. Just natural response may be required..."
+        ></textarea><br>
+        {%else%}
+        <input name="msg" type="text" required>
+        {%endif%}
+        <input type="submit">
+    </form>
+    <br><br><br><br>
+    {%for command in commands%}
+        <p>{{command|safe}}</p>
+    {%endfor%}
+    </ul>
+</body>
+</html>
