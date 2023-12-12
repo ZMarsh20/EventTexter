@@ -2,12 +2,16 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Title</title>
+    <title>Terminal</title>
 </head>
 <body style="text-align: center">
     <p>Hi {{user|title}}</p>
     {%for message in newMessage%}
+    {%if link%}
+        <a target="_blank" rel="noopener noreferrer" href="{{message}}"> {{message}} </a>
+    {%else%}
         <p> {{message}} </p>
+    {%endif%}
     {%endfor%}
     <style>
         @media only screen and (max-device-width: 767px) { [data-type="control_dropdown"] .form-input,
@@ -15,14 +19,13 @@
     </style>
     <form action="/terminal" method="post">
         {% if box %}
-        <textarea name="msg" row="20" cols="50" autofocus required
-        hint="Below are you possible commands at this stage. Just natural response may be required..."
-        ></textarea><br>
+        <textarea name="msg" row="20" cols="50" autofocus required></textarea><br>
         {%else%}
-        <input name="msg" type="text" required>
+        <input name="msg" type="text" autofocus required>
         {%endif%}
         <input type="submit">
     </form>
+    <p>Below are your possible commands at this stage. Use one, then respond naturally or use another command on next page</p>
     <br><br><br><br>
     {%for command in commands%}
         <p>{{command|safe}}</p>

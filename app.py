@@ -21,6 +21,7 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql://zmarshall:'
 app.config['SQLALCHEMY_DATABASE_URI'] += os.getenv("PASSWORD")
 app.config['SQLALCHEMY_DATABASE_URI'] += '@zmarshall.mysql.pythonanywhere-services.com/zmarshall$planner'
 app.config['SECRET_KEY'] = os.getenv("SECRET_KEY")
+app.config['SQLALCHEMY_POOL_RECYCLE'] = 280
 
 # TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
 # TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
@@ -272,7 +273,7 @@ class Vote:
 
 DAD = os.getenv("DAD_NUM")
 ADMIN = os.getenv("ADMIN_NUM")
-FAIL = 'Unrecognized command. Type "?" to see command options'
+FAIL = 'Unrecognized command. Look below to see command options'
 ROUTE = 'http://zmarshall.pythonanywhere.com/'
 
 @app.route('/help/<code>', methods=['GET', 'POST'])
@@ -408,13 +409,14 @@ def terminal():
         box = False
         if mode: box = mode[0] in ['w','m','I','A','q']
         if 'q' in mode and '1' not in mode: box = False
-        return render_template('terminal.html', newMessage=newMessage.split('\n'), user=session['name'], commands=help(user).split('\n')[1:],box=box)
+        link = ROUTE in newMessage
+        return render_template('terminal.html', newMessage=newMessage.split('\n'), user=session['name'], commands=help(user).split('\n')[1:],box=box,link=link)
     if request.method == 'POST':
         name = session['name']
         if str(request.form['code']) == session['code']:
             session['verified'] = True
             session['user'] = name
-            return render_template('terminal.html', newMessage=[""], commands=help(getNumber(name)[1]).split('\n')[1:])
+            return render_template('terminal.html', newMessage=[""], commands=help(getNumber(name)[1]).split('\n')[1:],box=False,link=False)
         else: return "Wrong code. Please go to last page and get new code"
     return "Error. Please try the link from your email again"
 # @app.route('/text', methods=['GET', 'POST'])
@@ -436,16 +438,20 @@ def verify(name):
     if not load('loaded'): loadState('current')
     else: restart()
     name = name.lower().replace('%20',' ')
-    if 'verified' in session and session['verified']:
-        redirect(url_for('terminal'))
+    if 'verified' in session and session['verified']: return redirect(url_for('terminal'))
     code = getCode()
     user = getNumber(name)[1] if name != 'admin' else ADMIN
     if user == "": return "Looks like this user wasn't invited. Reach out to Todd if this is a mistake"
     session['code'] = code
-    if sendEmail(user,"Your verification code is: "+code):
+    if sendEmail(user,"Your verification code is: "+code,'verify'):
         session['name'] = name
-        return render_template('verify.html', user=name)
+        return redirect(url_for('verifySent'))
     return "This user doesn't have their email set up"
+@app.route('/verify', methods=['GET', 'POST'])
+def verifySent():
+    if 'verified' in session and session['verified']: redirect(url_for('terminal'))
+    if 'name' in session and session['name']: return render_template('verify.html', user=session['name'])
+    return "Something went wrong. Re-launch the link from you email"
 
 def addAll():
     people, Welcome = load('people'), load('Welcome')
@@ -558,7 +564,7 @@ def addEmailStepOne(user, msg):
     people[user].buffer = msg + ','
     people[user].mode = 'E2'
     save('people', people)
-    return "Found them. what is their email?"
+    return "Found them. What is their email?"
 def addVote(i):
     people = load('people')
     people[DAD].option = i
@@ -613,7 +619,7 @@ def answers():
                 msg += person.name.title() + ' would like to go\n'
                 if payment:
                     msg += 'Has ' + ('' if person.paid else 'not ') + 'paid'
-                questions = [x.getText() for x in Events]
+                questions = [x.getTheme() for x in Events]
                 for i in range(len(questions)):
                     msg += '\n' + questions[i] + ': ' + person.answers[i]
             elif person.going and Events: msg += person.name.title() + " hasn't filled out the sheet"
@@ -733,8 +739,7 @@ def decode(user, oMsg):
                 code = getCode()
                 people[user].buffer = code
                 save('people', people)
-                send(user,(ROUTE+'signup/' + code))
-                return "Welcome! You should have a link to the sign in sheet now"
+                return "Here is your link to sign up:" + ROUTE+'signup/' + code
             clean(user)
             return 'Welcome. Type "?" to see your options\n' + announceHistory()
         elif not people[user].rejected:
@@ -1176,7 +1181,10 @@ def help(user):
     people, payment, currentGame = load('people'), load('payment'), load('currentGame')
     if user == ADMIN and ADMIN not in people: mode = 'z'
     else: mode = people[user].mode
-    msg = '"?": shows available commands. Commands are NOT case sensitive.\n'
+    msg = ""
+    if mode in ['a3','a4','a6','A2','I2','k2','q2']:
+        msg = '"y" or "n" is expected here'
+    msg += '"?": shows available commands. Commands are NOT case sensitive.\n'
     if 'a' in mode:
         msg += '\n"back": to no longer add a number.'
     elif 'A' in mode: msg += '\n"back": to no longer make an announcement.'
@@ -1386,8 +1394,7 @@ def send(user, msg):
         if texting: return False # twilio_api.messages.create(body=msg, from_=TWILIO_NUM, to=user)
         else: return sendEmail(user,msg)
     except: return False
-def sendEmail(user, msg):
-    people = load('people')
+def sendEmail(user, msg, template='email'):
     smtp_server = "smtp.outlook.com"
     port = 587
     sender = "ToddTrips@outlook.com"
@@ -1406,8 +1413,12 @@ def sendEmail(user, msg):
             message = MIMEMultipart('alternative')
             message['From'] = sender
             message['To'] = receiver
-            message['Subject'] = 'Mesquite 2024'
-            msg = email_template.format(msg=msg.replace('\n','<br>').replace('\r','<br>'),name=name,route=ROUTE)
+            subject = 'Mesquite 2024' if template == 'email' else 'Verification Code'
+            message['Subject'] = subject
+            if template == 'email':
+                msg = email_template.format(msg=msg.replace('\n','<br>').replace('\r','<br>'),name=name,route=ROUTE)
+            elif template == 'verify':
+                msg = verify_template.format(msg=msg.replace('\n','<br>').replace('\r','<br>'),route=ROUTE)
             message.attach(MIMEText(msg,'html'))
             server.sendmail(sender, receiver, message.as_string())
         except Exception as e:
@@ -1454,6 +1465,11 @@ email_template="""<body style="text-align:center">
 ----------------
 <p>Go here to start interacting with the app: <a href="{route}verify/{name}">{route}verify/{name}</a><p>
 <p style="color:gray">This route will verify you are who you are first then you'll have full access for a while until your session expires<p>
+<p style="color:gray">Contact Zach if there are any errors or troubles so we can get them fixed!<p>
+</body>"""
+verify_template="""<body>
+<h4>{msg}</h4>
+<enter it here: <a href="{route}/verify">{route}/verify</a>
 </body>"""
 
 if __name__ == '__main__':
