@@ -368,6 +368,7 @@ def signupRoute(code):
                 msg = 'no'
                 event.no += 1
             people[user].answers.append(msg)
+        people[user].mode = 'h' # should be redundant but I'm enforcing it
         save('people', people)
         save('Events', Events)
         clean(user)
@@ -409,7 +410,7 @@ def terminal():
         box = False
         if mode: box = mode[0] in ['w','m','I','A','q']
         if 'q' in mode and '1' not in mode: box = False
-        link = ROUTE in newMessage
+        link = ROUTE in newMessage and 'Last message:' not in newMessage
         return render_template('terminal.html', newMessage=newMessage.split('\n'), user=session['name'], commands=help(user).split('\n')[1:],box=box,link=link)
     if request.method == 'POST':
         name = session['name']
@@ -435,8 +436,6 @@ def terminal():
 #     return ':3'
 @app.route('/verify/<name>', methods=['GET', 'POST'])
 def verify(name):
-    if not load('loaded'): loadState('current')
-    else: restart()
     name = name.lower().replace('%20',' ')
     if 'verified' in session and session['verified']: return redirect(url_for('terminal'))
     code = getCode()
@@ -702,6 +701,7 @@ def clean(user):
     elif people[user].going:
         people[user].mode = 'h'
     people[user].buffer = ""
+    people[user].lastResponse = ""
     save('people', people)
     saveState('current')
     return 'Ok'
@@ -1473,8 +1473,7 @@ verify_template="""<body>
 </body>"""
 
 if __name__ == '__main__':
-    if load('loaded'): loadState('current')
-    else: restart()
+    if not load('loaded'): restart()
     app.run()
 
 # Legend
