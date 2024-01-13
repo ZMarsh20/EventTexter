@@ -436,7 +436,7 @@ def terminal():
 #     return ':3'
 @app.route('/verify/<name>', methods=['GET', 'POST'])
 def verify(name):
-    name = name.lower().replace('%20',' ')
+    name = name.lower().replace('%20',' ').replace('_',' ')
     if 'verified' in session and session['verified']: return redirect(url_for('terminal'))
     code = getCode()
     user = getNumber(name)[1] if name != 'admin' else ADMIN
