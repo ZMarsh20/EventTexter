@@ -163,8 +163,12 @@ class Game:
             for v in people.values():
                 if v.name not in self.notPlaying:
                     temp.append(v.name)
-            if len(temp) < 6: return False
             random.shuffle(temp)
+            if len(temp) < 5: return False
+            if len(temp) == 5:
+                self.teams.append(temp[:3])
+                self.teams.append(temp[3:])
+                return True
             case = len(temp) % 4
             group = 0
             team = []
@@ -408,7 +412,7 @@ def terminal():
                 save('people',people)
         mode = load('people')[user].mode
         box = False
-        if mode: box = mode[0] in ['w','m','I','A','q']
+        if mode: box = mode[0] in ['w','m','I','A','q'] and mode[0] not in ['A2']
         if 'q' in mode and '1' not in mode: box = False
         link = ROUTE in newMessage and 'Last message:' not in newMessage
         return render_template('terminal.html', newMessage=newMessage.split('\n'), user=session['name'], commands=help(user).split('\n')[1:],box=box,link=link)
@@ -1161,6 +1165,11 @@ def finalize():
             peeps += '\n' + v.name.title()
             del people[k]
             save('people',people)
+        else:
+            sched = load('Schedule')
+            if sched != "No schedule set yet":
+                message = "The event is now finalized\nHere is the schedule:\n" + sched
+                send(k,message)
     if peeps: return 'Removed: ' + peeps
     return 'No one removed'
 def getCode():
