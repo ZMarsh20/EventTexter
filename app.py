@@ -300,9 +300,10 @@ def score():
             holes.append(int(request.form[('hole' + str(i))]))
         if getNumber(name)[0] and name not in currentGame.notPlaying:
             if dataEntered(handicap,holes,tee,name):
+                currentGame = load('currentGame')
                 msg = "Success :). Thanks " + name.title() + ". Your total today was "
                 msg += str(people[getNumber(name)[1]].lastScore) + " and Net " + str(int(sum(currentGame.scores[name])))
-                if currentGame.scores == peopleGoing():
+                if len(currentGame.scores) == peopleGoing():
                     broadcast(None, currentGame.standings())
                     currentGame = None
                     save('currentGame', currentGame)
@@ -961,6 +962,7 @@ def decode(user, oMsg):
                                 if not getNumber(t)[0]:
                                     return t + " is not found"
                     if currentGame.setTeams(msg.split(' ',1)[1]):
+                        save('currentGame',currentGame)
                         currentGame.broadcast()
                         return "Teams set"
                     return "Team setup unsuccessful"
@@ -1160,7 +1162,7 @@ def finalize():
     msg = "The event is now finalized so you can't join anymore. Sorry you couldn't make it."
     msg += " You'll need to text Todd directly if you want back in now"
     for k,v in dict(people).items():
-        if not v.going:
+        if not v.going or not v.answers:
             send(k,msg)
             peeps += '\n' + v.name.title()
             del people[k]
@@ -1444,7 +1446,9 @@ def showQuestions():
 def startGame(user, msg):
     clean(user)
     if checkCourse(msg):
-        msg = "Game started. Good luck!"
+        msg = "Game started. Good luck!\n"
+        msg += "Enter your scores here\n"
+        msg += ROUTE + "score"
         return broadcast(user, msg)
     return "Course not found"
 def startOver(user):
