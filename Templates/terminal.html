@@ -8,9 +8,9 @@
     <p>Hi {{user|title}}</p>
     {%for message in newMessage%}
     {%if link%}
-        <a target="_blank" rel="noopener noreferrer" href="{{message}}"> {{message}} </a>
+        <a target="_blank" rel="noopener noreferrer" href="{{message}}"> {{message}} </a> <br>
     {%else%}
-        <p> {{message}} </p>
+        <p> {{message}} </p> <br>
     {%endif%}
     {%endfor%}
     <style>
@@ -20,6 +20,10 @@
     <form action="/terminal" method="post">
         {% if box %}
         <textarea name="msg" row="20" cols="50" autofocus required></textarea><br>
+        {% elif select %}
+        <select>
+
+        </select>
         {%else%}
         <input name="msg" type="text" autofocus required>
         {%endif%}

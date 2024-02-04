@@ -115,29 +115,30 @@ class Game:
         self.handicaps = handicaps.split(';')
         for _ in range(len(self.handicaps)):
             self.handicaps.append([int(x) for x in (self.handicaps.pop(0)).split(',')])
-        self.scores = {}
+        self.net = {}
+        self.gross = {}
         self.teams = []
         self.holeCount = len(self.pars)
         self.notPlaying = []
     def broadcast(self):
         msg = "Here are the teams: \n"
         for team in self.teams: msg += ','.join([x.title() for x in team]) + '\n'
-        broadcast(None, msg)
-    def bestball(self):
+        return msg
+    def bestball(self,scores):
         currentGame = load('currentGame')
         msg = "Best Ball:\n"
         if self.teams:
             for team in self.teams:
                 bestball = []
                 for i in range(currentGame.holeCount):
-                    bestball.append(min([self.scores[x][i] for x in team]))
+                    bestball.append(min([scores[x][i] for x in team]))
                 msg += ','.join([x.title() for x in team]) + ': ' + str(int(sum(bestball))) + '\n'
         bestball = []
         for i in range(currentGame.holeCount):
-            bestball.append(min([x[i] for x in self.scores.values()]))
+            bestball.append(min([x[i] for x in scores.values()]))
         msg += "Everyone: " + str(sum(bestball)) + '\n\n'
         return msg
-    def pinkball(self):
+    def pinkball(self,scores):
         currentGame = load('currentGame')
         msg = ""
         if self.teams:
@@ -145,7 +146,7 @@ class Game:
             for team in self.teams:
                 pinkball = []
                 for i in range(currentGame.holeCount):
-                    score = self.scores[team[(i%len(team))]][i]
+                    score = scores[team[(i%len(team))]][i]
                     pinkball.append(score)
                 msg += ','.join([x.title() for x in team]) + ': ' + str(int(sum(pinkball))) + '\n'
             msg += '\n'
@@ -217,7 +218,7 @@ class Game:
             name = ""
             val = 10
             cancel = False
-            for k,v in self.scores.items():
+            for k,v in self.net.items():
                 if v[i] < val:
                     name = k
                     val = v[i]
@@ -232,13 +233,16 @@ class Game:
     def standings(self):
         people = load('people')
         msg = "Scores:\n"
-        for k,v in self.scores.items():
+        for k,v in self.net.items():
             val = int(sum(v))
             msg += k.title() + ": " + str(people[getNumber(k)[1]].lastScore) + ' for ' + str(val) + '\n'
-        msg += '\n'
-        msg += self.pinkball()
-        msg += self.bestball()
-        msg += self.skins()
+        msg += '\nGROSS:'
+        msg += self.pinkball(self.gross)
+        msg += self.bestball(self.gross)
+        msg += '\nNET:'
+        msg += self.pinkball(self.net)
+        msg += self.bestball(self.net)
+        msg += self.skins(self.net)
         return msg
 class Question:
     def __init__(self):
@@ -289,7 +293,7 @@ def helpRoute(code):
     return "I can't help you unfortunately. Please request a new link"
 @app.route('/score', methods=['GET', 'POST'])
 def score():
-    currentGame, people = load('currentGame'), load('people')
+    currentGame = load('currentGame')
     if currentGame is None: return "Sorry. It seems there is no game active :("
     if request.method == 'POST':
         name = request.form['name'].lower().strip()
@@ -302,8 +306,9 @@ def score():
             if dataEntered(handicap,holes,tee,name):
                 currentGame = load('currentGame')
                 msg = "Success :). Thanks " + name.title() + ". Your total today was "
-                msg += str(people[getNumber(name)[1]].lastScore) + " and Net " + str(int(sum(currentGame.scores[name])))
-                if len(currentGame.scores) == peopleGoing():
+                people = load('people')
+                msg += str(people[getNumber(name)[1]].lastScore) + " and Net " + str(int(sum(currentGame.net[name])))
+                if len(currentGame.net) == peopleGoing():
                     broadcast(None, currentGame.standings())
                     currentGame = None
                     save('currentGame', currentGame)
@@ -334,7 +339,8 @@ def dataEntered(handicap,holes,tees,name):
         netScore = holes[hole] - additive - (extra >= currentGame.handicaps[i][hole])
         if currentGame.pars[hole] + 2 < netScore: netScore = currentGame.pars[hole] + 2
         net.append(netScore)
-    currentGame.scores[name] = net
+    currentGame.gross[name] = holes
+    currentGame.net[name] = net
     save('currentGame',currentGame)
     differential = sum(net) - sum(currentGame.pars)
     if -10 < differential or safetyPlug:
@@ -402,7 +408,7 @@ def terminal():
     if 'verified' in session and session['verified'] and 'user' in session and session['user']:
         user = getNumber(session['user'])[1]
         people = load('people')
-        if user not in people: return "Looks like you haven't been invited yet :("
+        if user not in people and user != ADMIN: return "Looks like you haven't been invited yet :("
         if session['name'] == 'admin': newMessage = ''
         else: newMessage = 'Last message: ' + people[user].lastResponse if people[user].lastResponse else ""
         if request.method == 'POST' and 'msg' in request.form:
@@ -411,18 +417,25 @@ def terminal():
             if session['name'] != 'admin':
                 people[user].lastResponse = newMessage
                 save('people',people)
-        mode = load('people')[user].mode
+        if user == ADMIN: mode = 'h'
+        else: mode = load('people')[user].mode
+
         box = False
-        if mode: box = mode[0] in ['w','m','I','A','q'] and mode[0] not in ['A2']
         if 'q' in mode and '1' not in mode: box = False
+        elif mode[0] in ['w','m','I','A','q'] and mode[0] not in ['A2']: box = True
+
+        selectList = []
+        select = False
+        # if len(mode)>1 and mode[0] in [] and mode[1] in []: select = True
+
         link = ROUTE in newMessage and 'Last message:' not in newMessage
-        return render_template('terminal.html', newMessage=newMessage.split('\n'), user=session['name'], commands=help(user).split('\n')[1:],box=box,link=link)
-    if request.method == 'POST':
+        return render_template('terminal.html', newMessage=newMessage.split('\n'), user=session['name'], commands=help(user).split('\n')[1:],box=box,select=select,selectList=selectList,link=link)
+    if request.method == 'GET':
         name = session['name']
-        if str(request.form['code']) == session['code']:
+        if str(request.args['code']) == session['code']:
             session['verified'] = True
             session['user'] = name
-            return render_template('terminal.html', newMessage=[""], commands=help(getNumber(name)[1]).split('\n')[1:],box=False,link=False)
+            return redirect(url_for('terminal'))
         else: return "Wrong code. Please go to last page and get new code"
     return "Error. Please try the link from your email again"
 # @app.route('/text', methods=['GET', 'POST'])
@@ -447,15 +460,15 @@ def verify(name):
     user = getNumber(name)[1] if name != 'admin' else ADMIN
     if user == "": return "Looks like this user wasn't invited. Reach out to Todd if this is a mistake"
     session['code'] = code
-    if sendEmail(user,"Your verification code is: "+code,'verify'):
+    if sendEmail(user,"Use this link to access the app: "+ROUTE+'terminal?code='+code):
         session['name'] = name
         return redirect(url_for('verifySent'))
     return "This user doesn't have their email set up"
 @app.route('/verify', methods=['GET', 'POST'])
 def verifySent():
     if 'verified' in session and session['verified']: redirect(url_for('terminal'))
-    if 'name' in session and session['name']: return render_template('verify.html', user=session['name'])
-    return "Something went wrong. Re-launch the link from you email"
+    if 'name' in session and session['name']: return 'An email was sent to ' + session['name']
+    return "Something went wrong. Re-launch the link from your email"
 
 def addAll():
     people, Welcome = load('people'), load('Welcome')
@@ -851,7 +864,33 @@ def decode(user, oMsg):
                         return "All set. Sent email to " + msg
                 else: return "This person is not in the database (You should NOT be able to get to this message. Please contact admin)"
             else: return "Not a valid email, please try again.\nIf you are sure you have typed it correctly please reach out to admin"
-    elif 'g' in mode: return startGame(user, msg)
+    elif 'g' in mode:
+        newMsg = "Game started. Good luck!\n"
+        newMsg += "Enter your scores here\n"
+        newMsg += ROUTE + "score"
+        if '1' in mode: return startGame(user, msg)
+        elif '2' in mode:
+            if msg[0] == 'y':
+                people = load('people')
+                people[user].mode = 'g3'
+                save('people',people)
+                return 'Enter the teams manually or just do random'
+            elif msg[0] != 'n': return '"y" or "n" expected'
+        elif '3' in mode:
+            try:
+                teams = msg.split(';')
+                if teams[0] != 'random':
+                    for team in teams:
+                        for t in team.split(','):
+                            if not getNumber(t)[0]:
+                                return t + " is not found"
+                if currentGame.setTeams(msg):
+                    save('currentGame',currentGame)
+                    newMsg += '\n' + currentGame.broadcast()
+                return "Team setup unsuccessful"
+            except: return FAIL
+        broadcast(user, newMsg)
+        return "Teams set"
     elif 'h' in mode:
         people[user].buffer = ""
         save('people', people)
@@ -898,6 +937,7 @@ def decode(user, oMsg):
                 save('people', people)
                 return ROUTE + "answers/" + code
             return status(user)
+        elif currentGame and msg == "link": return ROUTE+"score"
         elif (user == DAD or user == ADMIN) and currentEvent:
             if msg == "announce": return announce(user)
             elif currentGame and "minus" in msg:
@@ -929,7 +969,7 @@ def decode(user, oMsg):
                         broadcast(user, "Game ended")
                         currentGame = None
                         save('currentGame', currentGame)
-                    people[user].mode = 'g'
+                    people[user].mode = 'g1'
                     save('people', people)
                     return "What course?"
                 try:
@@ -963,7 +1003,7 @@ def decode(user, oMsg):
                                     return t + " is not found"
                     if currentGame.setTeams(msg.split(' ',1)[1]):
                         save('currentGame',currentGame)
-                        currentGame.broadcast()
+                        broadcast(None,currentGame.broadcast())
                         return "Teams set"
                     return "Team setup unsuccessful"
                 except: return FAIL
@@ -1199,6 +1239,16 @@ def help(user):
     if 'a' in mode:
         msg += '\n"back": to no longer add a number.'
     elif 'A' in mode: msg += '\n"back": to no longer make an announcement.'
+    elif 'g' in mode:
+        if '1' in mode:
+            msg = 'Need the course name to play'
+        if '2' in mode:
+            msg = '"y" or "n" is expected here'
+        if '3' in mode:
+            msg = 'to make the teams. Must either be manually entered: Teams zach,todd;dana,jim\n'
+            msg += '(Notice how each team is separated by a ";" and each player is separated by ",")\n'
+            msg += 'Or, if there\'s more than 4 players: Teams random\n'
+        msg += '\n"back": to no longer start a game.'
     elif 'h' in mode:
         if currentGame: msg += '\n"link": to get a new link to enter scores.\n'
         if payment:
@@ -1229,11 +1279,10 @@ def help(user):
             if currentGame:
                 msg += '\n"teams <teams>": to make the teams. Must either be manually entered: Teams zach,todd;dana,jim\n'
                 msg += '(Notice how each team is separated by a ";" and each player is separated by ",")\n'
-                msg += 'Or, if there\'s at least 6 players: Teams random\n'
+                msg += 'Or, if there\'s more than 4 players: Teams random\n'
                 msg += 'Teams can be recreated each time if needed\n'
                 msg += '"minus": to have a list of players that you aren\'t expecting to receive a score from: Minus zach\n'
             else: msg += '\n"play" to start playing a golf course. Add the name for a shortcut-> "Play Dos Rios"\n'
-            msg += '\n------ ADMIN EXCLUSIVE -------'
         else: msg += '\n'
         msg += '\n"end": to end the event for ' + ("everyone" if user == DAD else "yourself")
     elif 'I' in mode: msg += '\n"back": to no longer make changes the schedule page.'
@@ -1428,8 +1477,8 @@ def sendEmail(user, msg, template='email'):
             message['Subject'] = subject
             if template == 'email':
                 msg = email_template.format(msg=msg.replace('\n','<br>').replace('\r','<br>'),name=name,route=ROUTE)
-            elif template == 'verify':
-                msg = verify_template.format(msg=msg.replace('\n','<br>').replace('\r','<br>'),route=ROUTE)
+            # elif template == 'verify':
+            #     msg = verify_template.format(msg=msg.replace('\n','<br>').replace('\r','<br>'),route=ROUTE)
             message.attach(MIMEText(msg,'html'))
             server.sendmail(sender, receiver, message.as_string())
         except Exception as e:
@@ -1446,10 +1495,10 @@ def showQuestions():
 def startGame(user, msg):
     clean(user)
     if checkCourse(msg):
-        msg = "Game started. Good luck!\n"
-        msg += "Enter your scores here\n"
-        msg += ROUTE + "score"
-        return broadcast(user, msg)
+        people = load('people')
+        people[user].mode = 'g2'
+        save('people',people)
+        return "Course found. Set up teams?"
     return "Course not found"
 def startOver(user):
     people, Events = load('people'), load('Events')
@@ -1480,10 +1529,10 @@ email_template="""<body style="text-align:center">
 <p style="color:gray">This route will verify you are who you are first then you'll have full access for a while until your session expires<p>
 <p style="color:gray">Contact Zach if there are any errors or troubles so we can get them fixed!<p>
 </body>"""
-verify_template="""<body>
-<h4>{msg}</h4>
-<enter it here: <a href="{route}/verify">{route}/verify</a>
-</body>"""
+# verify_template="""<body>
+# <h4>{msg}</h4>
+# <enter it here: <a href="{route}/verify">{route}verify</a>
+# </body>"""
 
 if __name__ == '__main__':
     if not load('loaded'): restart()
