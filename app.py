@@ -59,6 +59,8 @@ class Person:
         self.starting = starting
         self.going = dad
         self.answers = []
+        self.winnings = {'bb':0,'pb':0,'s':0}
+        self.betting = True
 class Poll:
     def __init__(self):
         self.text = ""
@@ -128,11 +130,17 @@ class Game:
         currentGame = load('currentGame')
         msg = "Best Ball:\n"
         if self.teams:
+            scoretracker = []
             for team in self.teams:
                 bestball = []
                 for i in range(currentGame.holeCount):
                     bestball.append(min([scores[x][i] for x in team]))
                 msg += ','.join([x.title() for x in team]) + ': ' + str(int(sum(bestball))) + '\n'
+                scoretracker.append((int(sum(bestball)),team))
+            players = load('people')
+            for player in sorted(scoretracker)[0][1]:
+                players[getNumber(player)].winnings['bb']+=1
+            save('people',players)
         bestball = []
         for i in range(currentGame.holeCount):
             bestball.append(min([x[i] for x in scores.values()]))
@@ -142,14 +150,29 @@ class Game:
         currentGame = load('currentGame')
         msg = ""
         if self.teams:
+            scoretracker = {}
+
             msg += "Pink Ball:\n"
             for team in self.teams:
+                bestball = []
+                for i in range(currentGame.holeCount):
+                    bestball.append(min([scores[x][i] for x in team]))
+                scoretracker[tuple(team)] = str(int(sum(bestball)))
+
                 pinkball = []
                 for i in range(currentGame.holeCount):
                     score = scores[team[(i%len(team))]][i]
                     pinkball.append(score)
-                msg += ','.join([x.title() for x in team]) + ': ' + str(int(sum(pinkball))) + '\n'
+                scoretracker[team] += int(sum(pinkball))
+                msg += ','.join([x.title() for x in team]) + ': ' + str(int(sum(pinkball)))
+                msg += '+BestBall= ' + scoretracker[tuple(team)] + '\n'
             msg += '\n'
+
+            scoretracker = [(v,k) for k,v in scoretracker.items()]
+            players = load('people')
+            for player in sorted(scoretracker)[0][1]:
+                players[getNumber(player)].winnings['pb'] += 1
+            save('people', players)
         return msg
     def selectHandicaps(self, tees):
         currentGame = load('currentGame')
@@ -198,6 +221,7 @@ class Game:
             return False
     def skins(self):
         currentGame = load('currentGame')
+        people = load('people')
         def format(v):
             val = v.split(',')
             if len(val) == 1: return v
@@ -219,6 +243,7 @@ class Game:
             val = 10
             cancel = False
             for k,v in self.net.items():
+                if not people[getNumber(k)].betting: continue
                 if v[i] < val:
                     name = k
                     val = v[i]
@@ -227,8 +252,15 @@ class Game:
             if not cancel:
                 if name in skinCount: skinCount[name] += ',' + str(i+1)
                 else: skinCount[name] = str(i+1)
+        division = 0
         if not skinCount: return 'No skins'
-        for k,v in skinCount.items(): msg += '\n' + k.title() + ': ' + format(v)
+        for k,v in skinCount.items():
+            msg += '\n' + k.title() + ': ' + format(v)
+            division += len(v)
+        players = load('people')
+        for k,v in skinCount.items():
+            players[getNumber(k)].winnings['s'] += (18/division)*len(v)
+        save('people',players)
         return msg
     def standings(self):
         people = load('people')
@@ -244,6 +276,7 @@ class Game:
         msg += self.bestball(self.net)
         msg += self.skins(self.net)
         return msg
+
 class Question:
     def __init__(self):
         self.text = ""
@@ -1013,6 +1046,9 @@ def decode(user, oMsg):
                     if 'p' in peep.mode:
                         msg += '\n' + peep.name.title()
                 return msg
+            elif msg == "winnings":
+                people[user].mode = 'W'
+                return "Please eneter dollar amount for Bestball,Pinkball,Skins(per hole) comma separated like you see here"
     elif 'I' in mode:
         if '1' in mode:
             people[user].mode = 'I2'
@@ -1195,6 +1231,16 @@ def decode(user, oMsg):
         save('Welcome',Welcome)
         clean(DAD)
         return 'Welcome message is set'
+    elif 'W' in mode:
+        try:
+            line = msg.split(',')
+            bb = float(line[0])
+            pb = float(line[1])
+            s = float(line[2])
+            clean(user)
+            return winnings(bb,pb,s)
+        except:
+            return 'Bad input. Must be 3 numbers like this: "#,#,#"'
     return FAIL
 def finalize():
     people = load('people')
@@ -1283,6 +1329,7 @@ def help(user):
                 msg += 'Teams can be recreated each time if needed\n'
                 msg += '"minus": to have a list of players that you aren\'t expecting to receive a score from: Minus zach\n'
             else: msg += '\n"play" to start playing a golf course. Add the name for a shortcut-> "Play Dos Rios"\n'
+            msg += '\n"winnings": to announce final standings across all games with payouts and suggested pay\n'
         else: msg += '\n'
         msg += '\n"end": to end the event for ' + ("everyone" if user == DAD else "yourself")
     elif 'I' in mode: msg += '\n"back": to no longer make changes the schedule page.'
@@ -1311,13 +1358,12 @@ def help(user):
         msg += '\n"welcome": to update the welcoming message that invites people to your trip\n'
         msg += '\n"back": to end sign up and start adding people\n'
         msg += '\n"end": to restart the questionnaire'
-    elif 'w' in mode:
-        msg += '\n"back": exit set welcome\n'
+    elif 'w' in mode: msg += '\n"back": exit set welcome\n'
+    elif 'W' in mode: msg += '\n"back": exit winnings calculation\n'
     elif 'e' in mode:
         msg += '\n"y": to confirm\n'
         msg += '\n"n": to continue with event\n'
-    elif 'E' in mode:
-        msg += '\n"back": exit setting email\n'
+    elif 'E' in mode: msg += '\n"back": exit setting email\n'
     elif 'z' in mode:
         msg += '\n"save": saveState'
         msg += '\n"load": loadState'
@@ -1521,6 +1567,52 @@ def status(user):
     for k,v in people.items():
         if people[k].answers or k == DAD: msg += "\n" + v.name.title()
     return msg
+def winnings(bb,pb,s):
+    people = load('people')
+    payout = {}
+    totals = []
+    for peep in people:
+        payout[peep.name] = []
+        total = 0
+        for peeps in people:
+            if peep == peeps: continue
+            pays = 0
+            for game in [('bb',bb),('pb',pb),('s',s)]:
+                pays += (peep.winnings[game[0]] - peeps.winnings[game[0]]) * game[1]
+            total += pays
+            payout[peep.name].append((peeps.name,pays))
+        totals.append([total,peep.name])
+
+    simplePay = {}
+    while totals:
+        totals = sorted(totals)
+        loser = totals.pop(0)
+        if loser[0] == 0: break
+        winner = totals.pop()
+        if loser[1] not in simplePay: simplePay[loser[1]] = ''
+        if winner[1] not in simplePay: simplePay[winner[1]] = ''
+        val = loser[0] + winner[0]
+        payVal = min([-loser[0],winner[0]])
+        simplePay[loser[1]] += 'Pay ${:,.2f}'.format(payVal) + ' to ' + winner[1] + '\n'
+        simplePay[winner[1]] += 'Get ${:,.2f}'.format(payVal) + ' from ' + loser[1] + '\n'
+        if val < 0:
+            loser[0] = val
+            totals.append(loser)
+        else:
+            winner[0] = val
+            totals.append(winner)
+
+    for peep in people:
+        msg = "Your pay list:\n"
+        for pay in payout[peep.name][:-1]:
+            if pay[1] == 0: continue
+            elif pay[1] > 0: msg += '\t' + pay[0].title() + ' owes you ' + '${:,.2f}'.format(pay[1]) + '\n'
+            else: msg += "\tYou owe " + pay[0].title() + ' ' + '${:,.2f}'.format(-pay[1]) + '\n'
+
+        msg += '\n\nSummary: ' + ('You break even!' if peep.name not in simplePay else '\n' + simplePay[peep.name])
+
+        send(peep,msg)
+    return "Announcing final standings"
 
 email_template="""<body style="text-align:center">
 <h4>{msg}</h4>
@@ -1555,3 +1647,5 @@ if __name__ == '__main__':
 # r = ramp up
 # s = start
 # v = vote set up or vote
+# w = welcome
+# W = winnings
