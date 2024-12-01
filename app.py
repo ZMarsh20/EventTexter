@@ -139,7 +139,7 @@ class Game:
                 scoretracker.append((int(sum(bestball)),team))
             players = load('people')
             for player in sorted(scoretracker)[0][1]:
-                players[getNumber(player)].winnings['bb']+=1
+                players[getNumber(player)[1]].winnings['bb']+=1
             save('people',players)
         bestball = []
         for i in range(currentGame.holeCount):
@@ -171,7 +171,7 @@ class Game:
             scoretracker = [(v,k) for k,v in scoretracker.items()]
             players = load('people')
             for player in sorted(scoretracker)[0][1]:
-                players[getNumber(player)].winnings['pb'] += 1
+                players[getNumber(player)[1]].winnings['pb'] += 1
             save('people', players)
         return msg
     def selectHandicaps(self, tees):
@@ -243,7 +243,7 @@ class Game:
             val = 10
             cancel = False
             for k,v in self.net.items():
-                if not people[getNumber(k)].betting: continue
+                if not people[getNumber(k)[1]].betting: continue
                 if v[i] < val:
                     name = k
                     val = v[i]
@@ -259,7 +259,7 @@ class Game:
             division += len(v)
         players = load('people')
         for k,v in skinCount.items():
-            players[getNumber(k)].winnings['s'] += (18/division)*len(v)
+            players[getNumber(k)[1]].winnings['s'] += (18/division)*len(v)
         save('people',players)
         return msg
     def standings(self):
@@ -274,7 +274,7 @@ class Game:
         msg += '\nNET:'
         msg += self.pinkball(self.net)
         msg += self.bestball(self.net)
-        msg += self.skins(self.net)
+        msg += self.skins()
         return msg
 
 class Question:
@@ -490,7 +490,7 @@ def verify(name):
     name = name.lower().replace('%20',' ').replace('_',' ')
     if 'verified' in session and session['verified']: return redirect(url_for('terminal'))
     code = getCode()
-    user = getNumber(name)[1] if name != 'admin' else ADMIN
+    user = getNumber(name)[1] if name == 'admin' else ADMIN
     if user == "": return "Looks like this user wasn't invited. Reach out to Todd if this is a mistake"
     session['code'] = code
     if sendEmail(user,"Use this link to access the app: "+ROUTE+'terminal?code='+code):
@@ -923,6 +923,7 @@ def decode(user, oMsg):
                 return "Team setup unsuccessful"
             except: return FAIL
         broadcast(user, newMsg)
+        clean(user)
         return "Teams set"
     elif 'h' in mode:
         people[user].buffer = ""
@@ -936,6 +937,10 @@ def decode(user, oMsg):
                 name = msg.split(' ',1)[1]
                 return addStepOne(user, name)
             except: return FAIL
+        elif msg == "Betting":
+            people[user].betting = not people[user].betting
+            save('people',people)
+            return "You are no" + (' longer included in betting but team scores will still use your scores' if people[user].betting else 'w included in betting. Good luck!')
         elif 'email' in msg:
             if msg == "email":
                 people[user].mode = 'E1'
@@ -1006,7 +1011,7 @@ def decode(user, oMsg):
                     save('people', people)
                     return "What course?"
                 try:
-                    msg = msg.split(' ',1)[1]
+                    msg = ' '.join(msg.split(' ',1)[1:])
                     return startGame(user, msg)
                 except: return FAIL
             elif msg == "poll":
@@ -1046,9 +1051,13 @@ def decode(user, oMsg):
                     if 'p' in peep.mode:
                         msg += '\n' + peep.name.title()
                 return msg
-            elif msg == "winnings":
-                people[user].mode = 'W'
-                return "Please eneter dollar amount for Bestball,Pinkball,Skins(per hole) comma separated like you see here"
+            elif "winnings" in msg:
+                if msg == "winnings":
+                    people[user].mode = 'W'
+                    save('people',people)
+                    return "Please eneter dollar amount for Bestball,Pinkball,Skins(per hole) comma separated like you see here"
+                try: return winningsSet(user,' '.join(msg.split(' ')[1:]))
+                except: return FAIL
     elif 'I' in mode:
         if '1' in mode:
             people[user].mode = 'I2'
@@ -1231,16 +1240,7 @@ def decode(user, oMsg):
         save('Welcome',Welcome)
         clean(DAD)
         return 'Welcome message is set'
-    elif 'W' in mode:
-        try:
-            line = msg.split(',')
-            bb = float(line[0])
-            pb = float(line[1])
-            s = float(line[2])
-            clean(user)
-            return winnings(bb,pb,s)
-        except:
-            return 'Bad input. Must be 3 numbers like this: "#,#,#"'
+    elif 'W' in mode: return winningsSet(user,msg)
     return FAIL
 def finalize():
     people = load('people')
@@ -1291,7 +1291,7 @@ def help(user):
         if '2' in mode:
             msg = '"y" or "n" is expected here'
         if '3' in mode:
-            msg = 'to make the teams. Must either be manually entered: Teams zach,todd;dana,jim\n'
+            msg = 'To make the teams, it must either be manually entered: Teams zach,todd;dana,jim\n'
             msg += '(Notice how each team is separated by a ";" and each player is separated by ",")\n'
             msg += 'Or, if there\'s more than 4 players: Teams random\n'
         msg += '\n"back": to no longer start a game.'
@@ -1305,6 +1305,7 @@ def help(user):
         msg += '\n"message" or "msg": to begin messaging to someone on the going list.'
         msg += ' Add a name for a shortcut-> "Msg todd". Use the "status" command to see all the names.\n'
         msg += '\n"add": to add someone to the group. Add a name for a shortcut-> "Add todd".\n'
+        msg += '\n"betting": to toggle whether or not to include you in the game payouts\n'
         msg += '\n"status": to see people in the event'
         msg += ', current answers to all questions' if user == DAD else ''
         msg += ' and your payment status. ' if payment else '. '
@@ -1501,7 +1502,7 @@ def send(user, msg):
         else: return sendEmail(user,msg)
     except: return False
 def sendEmail(user, msg, template='email'):
-    smtp_server = "smtp.outlook.com"
+    smtp_server = "pro.turbo-smtp.com"
     port = 587
     sender = "ToddTrips@outlook.com"
     contact = Contacts.query.filter_by(number=user).first()
@@ -1527,6 +1528,7 @@ def sendEmail(user, msg, template='email'):
             #     msg = verify_template.format(msg=msg.replace('\n','<br>').replace('\r','<br>'),route=ROUTE)
             message.attach(MIMEText(msg,'html'))
             server.sendmail(sender, receiver, message.as_string())
+            save('lastEmail',[sender,receiver,msg,message.as_string()])
         except Exception as e:
             print('\n\n\n',"Email error:",e,'\n\n\n')
             return False
@@ -1571,14 +1573,14 @@ def winnings(bb,pb,s):
     people = load('people')
     payout = {}
     totals = []
-    for peep in people:
+    for num,peep in people.items():
         payout[peep.name] = []
         total = 0
-        for peeps in people:
-            if peep == peeps: continue
+        for nums,peeps in people.items():
+            if num == nums: continue
             pays = 0
-            for game in [('bb',bb),('pb',pb),('s',s)]:
-                pays += (peep.winnings[game[0]] - peeps.winnings[game[0]]) * game[1]
+            for game,multiplier in [('bb',bb),('pb',pb),('s',s)]:
+                pays += (peep.winnings[game] - peeps.winnings[game]) * multiplier
             total += pays
             payout[peep.name].append((peeps.name,pays))
         totals.append([total,peep.name])
@@ -1593,8 +1595,8 @@ def winnings(bb,pb,s):
         if winner[1] not in simplePay: simplePay[winner[1]] = ''
         val = loser[0] + winner[0]
         payVal = min([-loser[0],winner[0]])
-        simplePay[loser[1]] += 'Pay ${:,.2f}'.format(payVal) + ' to ' + winner[1] + '\n'
-        simplePay[winner[1]] += 'Get ${:,.2f}'.format(payVal) + ' from ' + loser[1] + '\n'
+        simplePay[loser[1]] += 'Pay ${:,.2f}'.format(payVal) + ' to ' + winner[1].title() + '\n'
+        simplePay[winner[1]] += 'Get ${:,.2f}'.format(payVal) + ' from ' + loser[1].title() + '\n'
         if val < 0:
             loser[0] = val
             totals.append(loser)
@@ -1602,17 +1604,27 @@ def winnings(bb,pb,s):
             winner[0] = val
             totals.append(winner)
 
-    for peep in people:
+    for num,peep in people.items():
         msg = "Your pay list:\n"
-        for pay in payout[peep.name][:-1]:
+        for pay in payout[peep.name]:
             if pay[1] == 0: continue
             elif pay[1] > 0: msg += '\t' + pay[0].title() + ' owes you ' + '${:,.2f}'.format(pay[1]) + '\n'
             else: msg += "\tYou owe " + pay[0].title() + ' ' + '${:,.2f}'.format(-pay[1]) + '\n'
 
         msg += '\n\nSummary: ' + ('You break even!' if peep.name not in simplePay else '\n' + simplePay[peep.name])
 
-        send(peep,msg)
+        send(num,msg)
     return "Announcing final standings"
+def winningsSet(user,msg):
+    try:
+        line = msg.split(',')
+        bb = float(line[0].strip())
+        pb = float(line[1].strip())
+        s = float(line[2].strip())
+        clean(user)
+        return winnings(bb, pb, s)
+    except:
+        return 'Bad input. Must be 3 numbers like this: "#,#,#"'
 
 email_template="""<body style="text-align:center">
 <h4>{msg}</h4>
