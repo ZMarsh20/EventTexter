@@ -138,6 +138,9 @@ class Game:
                 msg += ','.join([x.title() for x in team]) + ': ' + str(int(sum(bestball))) + '\n'
                 scoretracker.append((int(sum(bestball)),team))
             players = load('people')
+            for player in players:
+                if player.betting and player.name not in self.notPlaying:
+                    players[player.number].winnings['bb'] -= 1
             for player in sorted(scoretracker)[0][1]:
                 players[getNumber(player)[1]].winnings['bb']+=1
             save('people',players)
@@ -170,6 +173,9 @@ class Game:
 
             scoretracker = [(v,k) for k,v in scoretracker.items()]
             players = load('people')
+            for player in players:
+                if player.betting and player.name not in self.notPlaying:
+                    players[player.number].winnings['pb'] -= 1
             for player in sorted(scoretracker)[0][1]:
                 players[getNumber(player)[1]].winnings['pb'] += 1
             save('people', players)
@@ -258,8 +264,13 @@ class Game:
             msg += '\n' + k.title() + ': ' + format(v)
             division += len(v)
         players = load('people')
+        peoplePlaying = 0
+        for player in players:
+            if player.betting and player.name not in self.notPlaying:
+                players[player.number].winnings['s'] -= 18
+                peoplePlaying += 1
         for k,v in skinCount.items():
-            players[getNumber(k)[1]].winnings['s'] += (18/division)*len(v)
+            players[getNumber(k)[1]].winnings['s'] += (18/division)*len(v)*peoplePlaying
         save('people',players)
         return msg
     def standings(self):
@@ -448,7 +459,8 @@ def terminal():
             newMessage = decode(user, str(request.form['msg']))
             people = load('people')
             if session['name'] != 'admin':
-                people[user].lastResponse = newMessage
+                try: people[user].lastResponse = newMessage
+                except: return redirect(url_for('terminal'))
                 save('people',people)
         if user == ADMIN: mode = 'h'
         else: mode = load('people')[user].mode
@@ -464,12 +476,14 @@ def terminal():
         link = ROUTE in newMessage and 'Last message:' not in newMessage
         return render_template('terminal.html', newMessage=newMessage.split('\n'), user=session['name'], commands=help(user).split('\n')[1:],box=box,select=select,selectList=selectList,link=link)
     if request.method == 'GET':
-        name = session['name']
-        if str(request.args['code']) == session['code']:
-            session['verified'] = True
-            session['user'] = name
-            return redirect(url_for('terminal'))
-        else: return "Wrong code. Please go to last page and get new code"
+        try:
+            name = session['name']
+            if str(request.args['code']) == session['code']:
+                session['verified'] = True
+                session['user'] = name
+                return redirect(url_for('terminal'))
+            else: return "Wrong code. Please go to last page and get new code"
+        except: pass
     return "Error. Please try the link from your email again"
 # @app.route('/text', methods=['GET', 'POST'])
 # def text():
@@ -488,9 +502,9 @@ def terminal():
 @app.route('/verify/<name>', methods=['GET', 'POST'])
 def verify(name):
     name = name.lower().replace('%20',' ').replace('_',' ')
-    if 'verified' in session and session['verified']: return redirect(url_for('terminal'))
+    if 'verified' in session and session['verified'] and session['name'] == name: return redirect(url_for('terminal'))
     code = getCode()
-    user = getNumber(name)[1] if name == 'admin' else ADMIN
+    user = getNumber(name)[1] if name != 'admin' else ADMIN
     if user == "": return "Looks like this user wasn't invited. Reach out to Todd if this is a mistake"
     session['code'] = code
     if sendEmail(user,"Use this link to access the app: "+ROUTE+'terminal?code='+code):
@@ -780,10 +794,11 @@ def decode(user, oMsg):
             if not texting: return sendEmail(ADMIN,"Emailing now set for event")
             else: return "texting now enabled"
     if len(msg) < 1: return FAIL
-    if people[user].starting:
+    if user in people and people[user].starting:
         if 'y' == msg[0]:
             people[user].going = True
             people[user].starting = False
+            people[user].rejected = False
             save('people', people)
             if Events and not finalized:
                 people[user].mode = 'r'
@@ -860,7 +875,7 @@ def decode(user, oMsg):
         return "Only expecting 'y' or 'n'"
     elif 'e' in mode:
         if 'y' in msg:
-            if user == DAD or user == ADMIN:
+            if user == DAD or ('name' in session and session['name'] == 'admin'):
                 if '1' in mode:
                     people[user].mode = 'e2'
                     save('people', people)
@@ -1275,7 +1290,7 @@ def getNumber(name):
         if v.name == name: return v.going, k
     return False, ""
 def help(user):
-    people, payment, currentGame = load('people'), load('payment'), load('currentGame')
+    people, payment, currentGame, currentEvent = load('people'), load('payment'), load('currentGame'), load('currentEvent')
     if user == ADMIN and ADMIN not in people: mode = 'z'
     else: mode = people[user].mode
     msg = ""
@@ -1316,21 +1331,22 @@ def help(user):
                    ' something of the sort. Could hold any information you want though.\n'
             msg += '\n"add all": to add all numbers in database.\n'
             msg += '\n"add list": to add selections of numbers from database.\n'
-            msg += '\n"announce": to send a message to everyone. ' \
-                   'These will also be sent to members that arrive after you send the announcement\n'
-            msg += '\n"poll": to start a poll or end one early.'
-            msg += '\n"waiting": to get a list of people that have yet to vote in a poll if there is one.\n'
-            msg += '\n"kick": to remove a player from the event. Add a name for a shortcut-> "Kick zach".\n'
-            msg += '\n"finalize": will kick all the people that are not planning on going to the event\n'
             msg += '\n"email": to add an email address to an existing contact\n'
-            if currentGame:
-                msg += '\n"teams <teams>": to make the teams. Must either be manually entered: Teams zach,todd;dana,jim\n'
-                msg += '(Notice how each team is separated by a ";" and each player is separated by ",")\n'
-                msg += 'Or, if there\'s more than 4 players: Teams random\n'
-                msg += 'Teams can be recreated each time if needed\n'
-                msg += '"minus": to have a list of players that you aren\'t expecting to receive a score from: Minus zach\n'
-            else: msg += '\n"play" to start playing a golf course. Add the name for a shortcut-> "Play Dos Rios"\n'
-            msg += '\n"winnings": to announce final standings across all games with payouts and suggested pay\n'
+            if currentEvent:
+                msg += '\n"announce": to send a message to everyone. ' \
+                       'These will also be sent to members that arrive after you send the announcement\n'
+                msg += '\n"poll": to start a poll or end one early.'
+                msg += '\n"waiting": to get a list of people that have yet to vote in a poll if there is one.\n'
+                msg += '\n"kick": to remove a player from the event. Add a name for a shortcut-> "Kick zach".\n'
+                msg += '\n"finalize": will kick all the people that are not planning on going to the event\n'
+                if currentGame:
+                    msg += '\n"teams <teams>": to make the teams. Must either be manually entered: Teams zach,todd;dana,jim\n'
+                    msg += '(Notice how each team is separated by a ";" and each player is separated by ",")\n'
+                    msg += 'Or, if there\'s more than 4 players: Teams random\n'
+                    msg += 'Teams can be recreated each time if needed\n'
+                    msg += '"minus": to have a list of players that you aren\'t expecting to receive a score from: Minus zach\n'
+                else: msg += '\n"play" to start playing a golf course. Add the name for a shortcut-> "Play Dos Rios"\n'
+                msg += '\n"winnings": to announce final standings across all games with payouts and suggested pay\n'
         else: msg += '\n'
         msg += '\n"end": to end the event for ' + ("everyone" if user == DAD else "yourself")
     elif 'I' in mode: msg += '\n"back": to no longer make changes the schedule page.'
@@ -1520,7 +1536,7 @@ def sendEmail(user, msg, template='email'):
             message = MIMEMultipart('alternative')
             message['From'] = sender
             message['To'] = receiver
-            subject = 'Mesquite 2024' if template == 'email' else 'Verification Code'
+            subject = 'Orlando 2025' if template == 'email' else 'Verification Code'
             message['Subject'] = subject
             if template == 'email':
                 msg = email_template.format(msg=msg.replace('\n','<br>').replace('\r','<br>'),name=name,route=ROUTE)
